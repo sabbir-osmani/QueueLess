@@ -1,0 +1,278 @@
+/* ============================================
+   admin.css
+   Styles ONLY used on admin pages.
+   Loaded AFTER common.css.
+   ============================================ */
+
+.admin-badge {
+    background-color: var(--primary);
+    color: #FFFFFF;
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+}
+
+.btn-danger {
+    display: inline-block;
+    background-color: var(--danger);
+    color: #FFFFFF;
+    padding: 10px 22px;
+    border-radius: 6px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 15px;
+}
+
+.btn-danger:hover {
+    background-color: #b91c1c;
+}
+
+.btn-complete {
+    display: inline-block;
+    background-color: #FFFFFF;
+    color: var(--primary-dark);
+    padding: 10px 22px;
+    border-radius: 6px;
+    text-decoration: none;
+    font-weight: 700;
+    font-size: 15px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.btn-complete:hover {
+    background-color: #E6F4EC;
+}
+
+.btn-small {
+    padding: 7px 16px;
+    font-size: 13px;
+}
+
+/* ---------- header + tabs ---------- */
+.admin-header {
+    padding: 40px 60px 10px 60px;
+    text-align: center;
+}
+
+.admin-header h1 {
+    color: var(--primary);
+    font-size: 28px;
+    margin-bottom: 6px;
+}
+
+.admin-header p {
+    color: var(--text-muted);
+    font-size: 14px;
+    margin-bottom: 25px;
+}
+
+.service-tabs {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.tab {
+    padding: 9px 18px;
+    border-radius: 8px;
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-muted);
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+}
+
+.active-tab {
+    background-color: var(--primary);
+    color: #FFFFFF;
+    border-color: var(--primary);
+}
+
+/* ---------- control section ---------- */
+.control-section {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 22px;
+    padding: 30px 60px;
+    max-width: 1300px;
+    margin: 0 auto;
+}
+
+.serving-card {
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+    color: #FFFFFF;
+    border-radius: 14px;
+    padding: 30px;
+    text-align: center;
+}
+
+.serving-card .card-label {
+    color: #E6F4EC;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 10px;
+}
+
+.serving-card .big-token {
+    font-size: 38px;
+    font-weight: 800;
+    margin-bottom: 6px;
+}
+
+.serving-card .card-note {
+    color: #E6F4EC;
+    font-size: 14px;
+    margin-bottom: 22px;
+}
+
+.control-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.stat-mini-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+}
+
+.stat-mini {
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 10px;
+    text-align: center;
+}
+
+.stat-number {
+    font-size: 26px;
+    font-weight: 800;
+    color: var(--primary);
+    margin-bottom: 4px;
+}
+
+.stat-label {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+/* ---------- waiting list table ---------- */
+.queue-list-section {
+    padding: 10px 60px 60px 60px;
+    max-width: 1300px;
+    margin: 0 auto;
+}
+
+.queue-list-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.queue-list-header h2 {
+    color: var(--primary);
+    font-size: 20px;
+}
+
+.table-wrap {
+    background-color: var(--surface);
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    overflow-x: auto;
+    border: 1px solid var(--border);
+}
+
+.admin-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+.admin-table th:nth-child(1) { width: 15%; }
+.admin-table th:nth-child(2) { width: 40%; }
+.admin-table th:nth-child(3) { width: 20%; }
+.admin-table th:nth-child(4) { width: 25%; }
+
+.admin-table th {
+    background-color: var(--primary);
+    color: #FFFFFF;
+    text-align: left;
+    padding: 16px 22px;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+.admin-table td {
+    padding: 16px 22px;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.admin-table tr:last-child td {
+    border-bottom: none;
+}
+
+.status-pill {
+    display: inline-block;
+    padding: 5px 14px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.status-waiting {
+    background-color: rgba(244, 163, 0, 0.12);
+    color: var(--accent-dark);
+}
+
+/* ---------- responsive ---------- */
+@media (max-width: 900px) {
+    .admin-header,
+    .queue-list-section {
+        padding-left: 25px;
+        padding-right: 25px;
+    }
+
+    .control-section {
+        grid-template-columns: 1fr;
+        padding: 25px;
+    }
+}
+
+@media (max-width: 600px) {
+    .admin-header h1 {
+        font-size: 22px;
+    }
+
+    .service-tabs {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .stat-mini-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .control-buttons {
+        flex-direction: column;
+    }
+
+    .control-buttons .btn,
+    .control-buttons .btn-danger {
+        width: 100%;
+        text-align: center;
+    }
+}

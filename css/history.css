@@ -1,0 +1,111 @@
+/* ============================================
+   history.css
+   Styles ONLY used on history.php.
+   Loaded AFTER common.css.
+   ============================================ */
+
+.history-section {
+    padding: 50px 60px 70px 60px;
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+.history-header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.history-header h1 {
+    color: var(--primary);
+    font-size: 28px;
+    margin-bottom: 6px;
+}
+
+.history-header p {
+    color: var(--text-muted);
+    font-size: 14px;
+}
+
+.table-wrap {
+    background-color: var(--surface);
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    overflow-x: auto;
+    border: 1px solid var(--border);
+}
+
+.history-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+.history-table th:nth-child(1) { width: 15%; }
+.history-table th:nth-child(2) { width: 35%; }
+.history-table th:nth-child(3) { width: 25%; }
+.history-table th:nth-child(4) { width: 25%; }
+
+.history-table th {
+    background-color: var(--primary);
+    color: #FFFFFF;
+    text-align: left;
+    padding: 14px 18px;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+.history-table td {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+    color: var(--text-main);
+}
+
+.history-table tr:last-child td {
+    border-bottom: none;
+}
+
+.history-table tr:hover td {
+    background-color: var(--bg);
+}
+
+.status-pill {
+    display: inline-block;
+    padding: 5px 14px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.status-completed {
+    background-color: rgba(22, 163, 74, 0.12);
+    color: var(--success);
+}
+
+.status-skipped {
+    background-color: rgba(220, 38, 38, 0.1);
+    color: var(--danger);
+}
+
+.status-cancelled {
+    background-color: rgba(107, 114, 128, 0.12);
+    color: var(--text-muted);
+}
+
+/* ---------- responsive ---------- */
+@media (max-width: 600px) {
+    .history-section {
+        padding: 35px 20px 50px 20px;
+    }
+
+    .history-header h1 {
+        font-size: 22px;
+    }
+
+    .history-table th,
+    .history-table td {
+        padding: 10px 12px;
+        font-size: 13px;
+    }
+}

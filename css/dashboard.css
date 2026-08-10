@@ -1,0 +1,202 @@
+/* ============================================
+   dashboard.css
+   Styles ONLY used on dashboard.php.
+   Loaded AFTER common.css.
+   ============================================ */
+
+.welcome-bar {
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+    color: #FFFFFF;
+    padding: 45px 60px 60px 60px;
+    text-align: center;
+}
+
+.welcome-bar h1 {
+    font-size: 30px;
+    margin-bottom: 6px;
+}
+
+.welcome-bar p {
+    color: #E6F4EC;
+    font-size: 15px;
+}
+
+/* ---------- status card (overlaps welcome bar slightly) ---------- */
+.status-section {
+    display: flex;
+    justify-content: center;
+    padding: 0 20px;
+    margin-top: -35px;
+}
+
+.status-card {
+    background-color: var(--surface);
+    width: 100%;
+    max-width: 500px;
+    padding: 28px 30px;
+    border-radius: 14px;
+    box-shadow: 0 10px 30px rgba(1, 126, 67, 0.15);
+    text-align: center;
+    border-top: 5px solid var(--accent);
+}
+
+.status-label {
+    font-size: 13px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+}
+
+.status-token {
+    font-size: 26px;
+    color: var(--primary);
+    margin-bottom: 6px;
+}
+
+.status-sub {
+    font-size: 14px;
+    color: var(--text-muted);
+}
+
+.track-btn {
+    display: inline-block;
+    margin-top: 16px;
+}
+
+.btn-disabled {
+    display: inline-block;
+    background-color: #E5E7EB;
+    color: var(--text-muted);
+    cursor: not-allowed;
+}
+
+.btn-danger {
+    display: inline-block;
+    background-color: var(--danger);
+    color: #FFFFFF;
+    padding: 10px 22px;
+    border-radius: 6px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 15px;
+}
+
+.btn-danger:hover {
+    background-color: #b91c1c;
+}
+
+.track-link {
+    margin-bottom: 8px;
+}
+
+/* ---------- services section ---------- */
+.services {
+    padding: 70px 60px;
+    text-align: center;
+}
+
+.services h2 {
+    color: var(--primary);
+    margin-bottom: 8px;
+    font-size: 28px;
+    font-weight: 700;
+}
+
+.services > p.section-sub {
+    color: var(--text-muted);
+    margin-bottom: 40px;
+    font-size: 15px;
+}
+
+.service-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 25px;
+}
+
+.service-card {
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    border-top: 4px solid var(--primary);
+    border-radius: 10px;
+    padding: 28px 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    transition: 0.25s ease;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.service-card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 10px 24px rgba(1, 126, 67, 0.15);
+    border-top-color: var(--accent);
+}
+
+.service-card h3 {
+    color: var(--primary);
+    margin-bottom: 10px;
+}
+
+.service-card p {
+    font-size: 14px;
+    color: var(--text-muted);
+    margin-bottom: 15px;
+}
+
+.token-tag {
+    display: inline-block;
+    background-color: var(--accent);
+    color: var(--text-main);
+    font-weight: 700;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 13px;
+    margin-bottom: 18px;
+}
+
+.last-used-badge {
+    display: block;
+    font-size: 11px;
+    color: var(--primary);
+    font-weight: 600;
+    margin-top: -12px;
+    margin-bottom: 12px;
+}
+
+.btn-full-small {
+    width: 100%;
+    text-align: center;
+    padding: 9px;
+    font-size: 14px;
+}
+
+/* ---------- responsive ---------- */
+@media (max-width: 900px) {
+    .service-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 600px) {
+    .welcome-bar {
+        padding: 35px 20px 55px 20px;
+    }
+
+    .welcome-bar h1 {
+        font-size: 24px;
+    }
+
+    .services {
+        padding: 45px 20px;
+    }
+
+    .service-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .status-card {
+        padding: 22px 20px;
+    }
+}

@@ -1,0 +1,166 @@
+/* ============================================
+   queue.css
+   Styles ONLY used on queue.php.
+   Loaded AFTER common.css.
+   ============================================ */
+
+.queue-section {
+    padding: 50px 60px 70px 60px;
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+.queue-header {
+    text-align: center;
+    margin-bottom: 35px;
+}
+
+.queue-header h1 {
+    color: var(--primary);
+    font-size: 28px;
+    margin-bottom: 6px;
+}
+
+.queue-header p {
+    color: var(--text-muted);
+    font-size: 14px;
+}
+
+.queue-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 22px;
+    margin-bottom: 30px;
+}
+
+.queue-card {
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 26px 20px;
+    text-align: center;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.highlight-card {
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+    border: none;
+}
+
+.highlight-card .card-label {
+    color: #E6F4EC;
+}
+
+.highlight-card .big-token {
+    color: #FFFFFF;
+}
+
+.card-label {
+    font-size: 13px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 10px;
+}
+
+.big-token {
+    font-size: 34px;
+    font-weight: 800;
+    color: var(--primary);
+    margin-bottom: 12px;
+}
+
+.big-number {
+    font-size: 34px;
+    font-weight: 800;
+    color: var(--accent-dark);
+    margin-bottom: 8px;
+}
+
+.card-note {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.status-pill {
+    display: inline-block;
+    padding: 5px 14px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.status-waiting {
+    background-color: rgba(255, 255, 255, 0.2);
+    color: #FFFFFF;
+}
+
+.status-serving {
+    background-color: rgba(22, 163, 74, 0.12);
+    color: var(--success);
+}
+
+.queue-note {
+    background-color: rgba(244, 163, 0, 0.1);
+    border: 1px solid rgba(244, 163, 0, 0.3);
+    border-radius: 10px;
+    padding: 14px 18px;
+    text-align: center;
+    margin-bottom: 25px;
+}
+
+.queue-note p {
+    font-size: 13px;
+    color: var(--text-main);
+}
+
+.back-btn {
+    display: block;
+    width: fit-content;
+    margin: 0 auto;
+}
+
+.btn-danger {
+    display: inline-block;
+    background-color: var(--danger);
+    color: #FFFFFF;
+    padding: 10px 22px;
+    border-radius: 6px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 15px;
+}
+
+.btn-danger:hover {
+    background-color: #b91c1c;
+}
+
+.cancel-btn {
+    display: block;
+    width: fit-content;
+    margin: 14px auto 0 auto;
+}
+
+/* ---------- responsive ---------- */
+@media (max-width: 900px) {
+    .queue-section {
+        padding: 40px 25px 60px 25px;
+    }
+
+    .queue-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 600px) {
+    .queue-header h1 {
+        font-size: 22px;
+    }
+
+    .big-token,
+    .big-number {
+        font-size: 28px;
+    }
+}

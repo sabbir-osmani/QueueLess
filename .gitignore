@@ -1,0 +1,19 @@
+# One-time setup scripts - never commit these, they create test/admin accounts
+makeAdmin.php
+seedData.php
+schema_check.sql
+
+#ai
+generate_codebase.py
+.python-version
+
+# tracker file - internal use only, not part of the actual project
+STATIC_DATA_TODO.md
+
+# OS junk files
+.DS_Store
+Thumbs.db
+
+# editor folders
+.vscode/
+.idea/
