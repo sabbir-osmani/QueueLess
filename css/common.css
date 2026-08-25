@@ -131,6 +131,34 @@ body {
     cursor: pointer;
 }
 
+/* This red "danger" button is used on the admin dashboard (Skip),
+   the student dashboard (Cancel Token) and the queue page (Cancel).
+   It used to be copy-pasted in several CSS files - now it just lives here once. */
+.btn-danger {
+    display: inline-block;
+    background-color: var(--danger);
+    color: #FFFFFF;
+    padding: 10px 22px;
+    border-radius: 6px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 15px;
+}
+
+.btn-danger:hover {
+    background-color: #b91c1c;
+}
+
+/* This is the white rounded box that wraps a <table> element.
+   It used to be copy-pasted in the admin and history CSS files. */
+.table-wrap {
+    background-color: var(--surface);
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    overflow-x: auto;
+    border: 1px solid var(--border);
+}
+
 /* ---------- footer ---------- */
 .footer {
     text-align: center;

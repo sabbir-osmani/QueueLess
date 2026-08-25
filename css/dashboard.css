@@ -2,6 +2,7 @@
    dashboard.css
    Styles ONLY used on dashboard.php.
    Loaded AFTER common.css.
+   (.btn-danger now lives in common.css)
    ============================================ */
 
 .welcome-bar {
@@ -69,21 +70,6 @@
     background-color: #E5E7EB;
     color: var(--text-muted);
     cursor: not-allowed;
-}
-
-.btn-danger {
-    display: inline-block;
-    background-color: var(--danger);
-    color: #FFFFFF;
-    padding: 10px 22px;
-    border-radius: 6px;
-    text-decoration: none;
-    font-weight: 600;
-    font-size: 15px;
-}
-
-.btn-danger:hover {
-    background-color: #b91c1c;
 }
 
 .track-link {

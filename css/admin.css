@@ -2,6 +2,7 @@
    admin.css
    Styles ONLY used on admin pages.
    Loaded AFTER common.css.
+   (.btn-danger and .table-wrap now live in common.css)
    ============================================ */
 
 .admin-badge {
@@ -13,21 +14,6 @@
     font-weight: 600;
     display: flex;
     align-items: center;
-}
-
-.btn-danger {
-    display: inline-block;
-    background-color: var(--danger);
-    color: #FFFFFF;
-    padding: 10px 22px;
-    border-radius: 6px;
-    text-decoration: none;
-    font-weight: 600;
-    font-size: 15px;
-}
-
-.btn-danger:hover {
-    background-color: #b91c1c;
 }
 
 .btn-complete {
@@ -181,14 +167,6 @@
 .queue-list-header h2 {
     color: var(--primary);
     font-size: 20px;
-}
-
-.table-wrap {
-    background-color: var(--surface);
-    border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-    overflow-x: auto;
-    border: 1px solid var(--border);
 }
 
 .admin-table {
