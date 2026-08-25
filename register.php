@@ -16,15 +16,19 @@
             $errorMsg = "Password must be at least 6 characters";
         } else {
             // check if email already used
-            $checkQuery = "SELECT id FROM students WHERE email = '$email'";
-            $checkResult = mysqli_query($conn, $checkQuery);
+            $checkStatement = mysqli_prepare($conn, "SELECT id FROM students WHERE email = ?");
+            mysqli_stmt_bind_param($checkStatement, "s", $email);
+            mysqli_stmt_execute($checkStatement);
+            $checkResult = mysqli_stmt_get_result($checkStatement);
 
             if (mysqli_num_rows($checkResult) > 0) {
                 $errorMsg = "This email is already registered";
             } else {
                 $hashedPass = password_hash($pass, PASSWORD_DEFAULT);
-                $insertQuery = "INSERT INTO students (name, email, pass, created_at) VALUES ('$name', '$email', '$hashedPass', NOW())";
-                mysqli_query($conn, $insertQuery);
+
+                $insertStatement = mysqli_prepare($conn, "INSERT INTO students (name, email, pass, created_at) VALUES (?, ?, ?, NOW())");
+                mysqli_stmt_bind_param($insertStatement, "sss", $name, $email, $hashedPass);
+                mysqli_stmt_execute($insertStatement);
 
                 $newId = mysqli_insert_id($conn);
                 $_SESSION['student_id'] = $newId;
@@ -68,7 +72,7 @@
             <p class="auth-sub">Register to start taking digital tokens</p>
 
             <?php if ($errorMsg != "") { ?>
-                <p class="form-error"><?php echo $errorMsg; ?></p>
+                <p class="form-error"><?php echo htmlspecialchars($errorMsg); ?></p>
             <?php } ?>
 
             <form action="" method="POST">

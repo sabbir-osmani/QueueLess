@@ -35,7 +35,7 @@ QueueLess/
 ├── index.php, login.php, register.php, dashboard.php, queue.php, history.php, logout.php
 ├── admin/          - admin login, dashboard, queue control actions
 ├── ajax/           - live polling endpoints (queueStatus.php, adminStatus.php)
-├── includes/       - shared db connection
+├── includes/       - shared db connection + shared service list
 ├── css/            - one shared common.css + per-page stylesheets
 ├── images/         - logo, icons, favicon
 └── OPERATING_GUIDE.md - full usage guide for students & admins

@@ -16,8 +16,9 @@
     $tokenId = (int) $_GET['id'];
 
     // only allow cancelling YOUR OWN token, and only if it's still waiting (not already being served)
-    $query = "UPDATE tokens SET status = 'cancelled' WHERE id = $tokenId AND student_id = $studentId AND status = 'waiting'";
-    mysqli_query($conn, $query);
+    $statement = mysqli_prepare($conn, "UPDATE tokens SET status = 'cancelled' WHERE id = ? AND student_id = ? AND status = 'waiting'");
+    mysqli_stmt_bind_param($statement, "ii", $tokenId, $studentId);
+    mysqli_stmt_execute($statement);
 
     header("Location: dashboard.php");
     exit();

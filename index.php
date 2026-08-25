@@ -1,3 +1,6 @@
+<?php
+    require 'includes/services.php'; // gives us the $services list
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -37,29 +40,13 @@
         <p class="section-sub">Pick a service below and get your digital token in seconds</p>
         <div class="service-grid">
 
-            <div class="service-card">
-                <h3>Accounts Office</h3>
-                <p>Tuition fee, payments and account related queries.</p>
-                <span class="token-tag">A001</span>
-            </div>
-
-            <div class="service-card">
-                <h3>Library</h3>
-                <p>Book issue, return and library membership services.</p>
-                <span class="token-tag">L001</span>
-            </div>
-
-            <div class="service-card">
-                <h3>CSE Department Office</h3>
-                <p>Department related forms, signatures and notices.</p>
-                <span class="token-tag">C001</span>
-            </div>
-
-            <div class="service-card">
-                <h3>Computer Lab</h3>
-                <p>Lab access, equipment and technical support.</p>
-                <span class="token-tag">B001</span>
-            </div>
+            <?php foreach ($services as $service) { ?>
+                <div class="service-card">
+                    <h3><?php echo htmlspecialchars($service['name']); ?></h3>
+                    <p><?php echo htmlspecialchars($service['description']); ?></p>
+                    <span class="token-tag"><?php echo $service['prefix']; ?>001</span>
+                </div>
+            <?php } ?>
 
         </div>
     </section>

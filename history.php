@@ -1,6 +1,7 @@
 <?php
     session_start();
     require 'includes/db.php';
+    require 'includes/services.php'; // gives us $serviceNames
 
     if (!isset($_SESSION['student_id'])) {
         header("Location: login.php");
@@ -8,10 +9,11 @@
     }
 
     $studentId = $_SESSION['student_id'];
-    $nameMap = array("accounts" => "Accounts Office", "library" => "Library", "cse" => "CSE Department Office", "lab" => "Computer Lab");
 
-    $historyQuery = "SELECT * FROM tokens WHERE student_id = $studentId ORDER BY created_at DESC";
-    $historyResult = mysqli_query($conn, $historyQuery);
+    $historyStatement = mysqli_prepare($conn, "SELECT * FROM tokens WHERE student_id = ? ORDER BY created_at DESC");
+    mysqli_stmt_bind_param($historyStatement, "i", $studentId);
+    mysqli_stmt_execute($historyStatement);
+    $historyResult = mysqli_stmt_get_result($historyStatement);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -62,8 +64,8 @@
                     <?php if (mysqli_num_rows($historyResult) > 0) { ?>
                         <?php while ($row = mysqli_fetch_assoc($historyResult)) { ?>
                             <tr>
-                                <td><?php echo $row['token_no']; ?></td>
-                                <td><?php echo $nameMap[$row['service']]; ?></td>
+                                <td><?php echo htmlspecialchars($row['token_no']); ?></td>
+                                <td><?php echo htmlspecialchars($serviceNames[$row['service']]); ?></td>
                                 <td><?php echo date("d M Y", strtotime($row['created_at'])); ?></td>
                                 <td>
                                     <?php if ($row['status'] == 'completed') { ?>

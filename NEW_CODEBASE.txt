@@ -1,0 +1,2740 @@
+@.gitignore
+# One-time setup scripts - never commit these, they create test/admin accounts
+makeAdmin.php
+seedData.php
+schema_check.sql
+
+#ai
+generate_codebase.py
+.python-version
+
+# tracker file - internal use only, not part of the actual project
+STATIC_DATA_TODO.md
+
+# OS junk files
+.DS_Store
+Thumbs.db
+
+# editor folders
+.vscode/
+.idea/
+
+@.python-version
+3.7.4
+
+@admin/completeToken.php
+<?php
+    session_start();
+    require '../includes/db.php';
+
+    if (!isset($_SESSION['admin_id'])) {
+        header("Location: login.php");
+        exit();
+    }
+
+    $service = $_SESSION['admin_service']; // locked to admin's own assigned service, ignore any URL tampering
+
+    $statement = mysqli_prepare($conn, "UPDATE tokens SET status = 'completed' WHERE service = ? AND status = 'serving'");
+    mysqli_stmt_bind_param($statement, "s", $service);
+    mysqli_stmt_execute($statement);
+
+    header("Location: dashboard.php");
+    exit();
+?>
+
+@admin/dashboard.php
+<?php
+    session_start();
+    require '../includes/db.php';
+    require '../includes/services.php'; // gives us $serviceNames
+
+    if (!isset($_SESSION['admin_id'])) {
+        header("Location: login.php");
+        exit();
+    }
+
+    $service = $_SESSION['admin_service'];
+    $adminName = $_SESSION['admin_name'];
+
+    // safety check - this admin account has no service assigned in the database
+    if (!$service || !isset($serviceNames[$service])) {
+        die("Your admin account has no service assigned. Please contact the system administrator to fix this in the admins table.");
+    }
+
+    // now serving row
+    $servingStatement = mysqli_prepare($conn, "SELECT tokens.*, students.name AS student_name FROM tokens JOIN students ON tokens.student_id = students.id WHERE tokens.service = ? AND tokens.status = 'serving' ORDER BY tokens.id ASC LIMIT 1");
+    mysqli_stmt_bind_param($servingStatement, "s", $service);
+    mysqli_stmt_execute($servingStatement);
+    $servingResult = mysqli_stmt_get_result($servingStatement);
+    $servingRow = mysqli_num_rows($servingResult) > 0 ? mysqli_fetch_assoc($servingResult) : null;
+
+    // stats: waiting count, served today, skipped today
+    $waitingStatement = mysqli_prepare($conn, "SELECT COUNT(*) AS total FROM tokens WHERE service = ? AND status = 'waiting'");
+    mysqli_stmt_bind_param($waitingStatement, "s", $service);
+    mysqli_stmt_execute($waitingStatement);
+    $waitingRow = mysqli_fetch_assoc(mysqli_stmt_get_result($waitingStatement));
+    $waitingCount = $waitingRow['total'];
+
+    $servedStatement = mysqli_prepare($conn, "SELECT COUNT(*) AS total FROM tokens WHERE service = ? AND status = 'completed' AND DATE(created_at) = CURDATE()");
+    mysqli_stmt_bind_param($servedStatement, "s", $service);
+    mysqli_stmt_execute($servedStatement);
+    $servedRow = mysqli_fetch_assoc(mysqli_stmt_get_result($servedStatement));
+    $servedCount = $servedRow['total'];
+
+    $skippedStatement = mysqli_prepare($conn, "SELECT COUNT(*) AS total FROM tokens WHERE service = ? AND status = 'skipped' AND DATE(created_at) = CURDATE()");
+    mysqli_stmt_bind_param($skippedStatement, "s", $service);
+    mysqli_stmt_execute($skippedStatement);
+    $skippedRow = mysqli_fetch_assoc(mysqli_stmt_get_result($skippedStatement));
+    $skippedCount = $skippedRow['total'];
+
+    // waiting list
+    $listStatement = mysqli_prepare($conn, "SELECT tokens.*, students.name AS student_name FROM tokens JOIN students ON tokens.student_id = students.id WHERE tokens.service = ? AND tokens.status = 'waiting' ORDER BY tokens.id ASC");
+    mysqli_stmt_bind_param($listStatement, "s", $service);
+    mysqli_stmt_execute($listStatement);
+    $listResult = mysqli_stmt_get_result($listStatement);
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - QueueLess</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="icon" href="../images/favicon.png" type="image/png">
+    <link rel="stylesheet" href="../css/common.css?v=2">
+    <link rel="stylesheet" href="../css/admin.css?v=2">
+</head>
+<body>
+
+    <!-- top navbar -->
+    <header class="navbar">
+        <a href="dashboard.php" class="nav-left" style="text-decoration:none;">
+            <img src="../images/queueless-icon.png" alt="QueueLess Icon" class="logo">
+            <img src="../images/queueless-text.png" alt="QueueLess Text" class="logo-text">
+        </a>
+        <div class="nav-right">
+            <span class="admin-badge">Admin</span>
+            <a href="login.php" class="btn btn-solid">Logout</a>
+        </div>
+    </header>
+
+    <!-- service selector -->
+    <section class="admin-header">
+        <h1>Queue Management</h1>
+        <p>Welcome, <?php echo htmlspecialchars($adminName); ?> &mdash; you manage the <strong><?php echo htmlspecialchars($serviceNames[$service]); ?></strong> queue</p>
+
+        <div class="service-tabs">
+            <span class="tab active-tab"><?php echo htmlspecialchars($serviceNames[$service]); ?></span>
+        </div>
+    </section>
+
+    <!-- current serving + controls -->
+    <section class="control-section">
+
+        <div class="serving-card">
+            <p class="card-label">Now Serving</p>
+            <?php if ($servingRow) { ?>
+                <h2 class="big-token" id="servingTokenBox"><?php echo htmlspecialchars($servingRow['token_no']); ?></h2>
+                <p class="card-note" id="servingStudentBox">Student: <?php echo htmlspecialchars($servingRow['student_name']); ?></p>
+            <?php } else { ?>
+                <h2 class="big-token" id="servingTokenBox">--</h2>
+                <p class="card-note" id="servingStudentBox">No one is being served right now</p>
+            <?php } ?>
+
+            <div class="control-buttons" id="controlButtonsBox">
+                <?php if ($servingRow) { ?>
+                    <a href="completeToken.php?service=<?php echo $service; ?>" class="btn btn-complete">Mark Completed</a>
+                    <a href="skipToken.php?service=<?php echo $service; ?>" class="btn btn-danger">Skip</a>
+                <?php } else { ?>
+                    <a href="nextToken.php?service=<?php echo $service; ?>" class="btn btn-solid">Call Next</a>
+                <?php } ?>
+            </div>
+        </div>
+
+        <div class="stat-mini-grid">
+            <div class="stat-mini">
+                <p class="stat-number" id="waitingCountBox"><?php echo $waitingCount; ?></p>
+                <p class="stat-label">Waiting</p>
+            </div>
+            <div class="stat-mini">
+                <p class="stat-number" id="servedCountBox"><?php echo $servedCount; ?></p>
+                <p class="stat-label">Served Today</p>
+            </div>
+            <div class="stat-mini">
+                <p class="stat-number" id="skippedCountBox"><?php echo $skippedCount; ?></p>
+                <p class="stat-label">Skipped</p>
+            </div>
+        </div>
+
+    </section>
+
+    <!-- waiting list -->
+    <section class="queue-list-section">
+        <div class="queue-list-header">
+            <h2><?php echo htmlspecialchars($serviceNames[$service]); ?> - Waiting List</h2>
+            <a href="resetQueue.php?service=<?php echo $service; ?>" class="btn btn-outline btn-small">Reset Queue</a>
+        </div>
+
+        <div class="table-wrap">
+            <table class="admin-table">
+                <thead>
+                    <tr>
+                        <th>Token</th>
+                        <th>Student Name</th>
+                        <th>Time Taken</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="waitingListBody">
+                    <?php if (mysqli_num_rows($listResult) > 0) { ?>
+                        <?php while ($row = mysqli_fetch_assoc($listResult)) { ?>
+                            <tr>
+                                <td><?php echo htmlspecialchars($row['token_no']); ?></td>
+                                <td><?php echo htmlspecialchars($row['student_name']); ?></td>
+                                <td><?php echo date("h:i A", strtotime($row['created_at'])); ?></td>
+                                <td><span class="status-pill status-waiting">Waiting</span></td>
+                            </tr>
+                        <?php } ?>
+                    <?php } else { ?>
+                        <tr>
+                            <td colspan="4" style="text-align:center; padding: 30px; color: var(--text-muted);">No one waiting in this queue.</td>
+                        </tr>
+                    <?php } ?>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- footer -->
+    <footer class="footer">
+        <p>Green University of Bangladesh &mdash; Department of CSE</p>
+        <p>QueueLess Project | Web Programming Lab</p>
+    </footer>
+    <script>
+        var currentService = "<?php echo $service; ?>";
+
+        function refreshAdminStatus() {
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", "../ajax/adminStatus.php?service=" + currentService, true);
+
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState == 4 && xhr.status == 200) {
+                    var data = JSON.parse(xhr.responseText);
+
+                    // update now serving card
+                    document.getElementById("servingTokenBox").innerHTML = data.servingToken ? data.servingToken : "--";
+                    document.getElementById("servingStudentBox").innerHTML = data.servingToken ? ("Student: " + data.servingStudent) : "No one is being served right now";
+
+                    // update control buttons based on state
+                    var buttonsBox = document.getElementById("controlButtonsBox");
+                    if (data.servingToken) {
+                        buttonsBox.innerHTML =
+                            '<a href="completeToken.php?service=' + currentService + '" class="btn btn-complete">Mark Completed</a>' +
+                            '<a href="skipToken.php?service=' + currentService + '" class="btn btn-danger">Skip</a>';
+                    } else {
+                        buttonsBox.innerHTML =
+                            '<a href="nextToken.php?service=' + currentService + '" class="btn btn-solid">Call Next</a>';
+                    }
+
+                    // update stats
+                    document.getElementById("waitingCountBox").innerHTML = data.waitingCount;
+                    document.getElementById("servedCountBox").innerHTML = data.servedCount;
+                    document.getElementById("skippedCountBox").innerHTML = data.skippedCount;
+
+                    // rebuild waiting list table
+                    var tbody = document.getElementById("waitingListBody");
+                    if (data.waitingList.length > 0) {
+                        var rowsHtml = "";
+                        for (var i = 0; i < data.waitingList.length; i++) {
+                            var item = data.waitingList[i];
+                            rowsHtml += "<tr>";
+                            rowsHtml += "<td>" + item.token_no + "</td>";
+                            rowsHtml += "<td>" + item.student_name + "</td>";
+                            rowsHtml += "<td>" + item.time + "</td>";
+                            rowsHtml += '<td><span class="status-pill status-waiting">Waiting</span></td>';
+                            rowsHtml += "</tr>";
+                        }
+                        tbody.innerHTML = rowsHtml;
+                    } else {
+                        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding: 30px; color: var(--text-muted);">No one waiting in this queue.</td></tr>';
+                    }
+                }
+            };
+
+            xhr.send();
+        }
+
+        // refresh every 5 seconds
+        setInterval(refreshAdminStatus, 5000);
+    </script>
+
+</body>
+</html>
+
+@admin/login.php
+<?php
+    session_start();
+    require '../includes/db.php';
+
+    $errorMsg = "";
+
+    if (isset($_POST['email'])) {
+        $email = $_POST['email'];
+        $pass = $_POST['pass'];
+
+        $statement = mysqli_prepare($conn, "SELECT * FROM admins WHERE email = ?");
+        mysqli_stmt_bind_param($statement, "s", $email);
+        mysqli_stmt_execute($statement);
+        $result = mysqli_stmt_get_result($statement);
+
+        if (mysqli_num_rows($result) > 0) {
+            $row = mysqli_fetch_assoc($result);
+
+            if (password_verify($pass, $row['pass'])) {
+                $_SESSION['admin_id'] = $row['id'];
+                $_SESSION['admin_name'] = $row['name'];
+                $_SESSION['admin_service'] = $row['service'];
+
+                header("Location: dashboard.php");
+                exit();
+            } else {
+                $errorMsg = "Wrong password";
+            }
+        } else {
+            $errorMsg = "No admin account found with this email";
+        }
+    }
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Login - QueueLess</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="icon" href="../images/favicon.png" type="image/png">
+    <link rel="stylesheet" href="../css/common.css">
+    <link rel="stylesheet" href="../css/auth.css">
+</head>
+<body>
+
+    <!-- top navbar -->
+    <header class="navbar">
+        <a href="../index.php" class="nav-left" style="text-decoration:none;">
+            <img src="../images/queueless-icon.png" alt="QueueLess Icon" class="logo">
+            <img src="../images/queueless-text.png" alt="QueueLess Text" class="logo-text">
+        </a>
+        <div class="nav-right">
+            <a href="../index.php" class="btn btn-outline">Back to Home</a>
+        </div>
+    </header>
+
+    <!-- admin login card -->
+    <section class="auth-section">
+        <div class="auth-card">
+            <h1>Admin Login</h1>
+            <p class="auth-sub">Staff access only, manage queues here</p>
+
+            <?php if ($errorMsg != "") { ?>
+                <p class="form-error"><?php echo htmlspecialchars($errorMsg); ?></p>
+            <?php } ?>
+
+            <form action="" method="POST">
+
+                <div class="form-group">
+                    <label for="email">Admin Email</label>
+                    <input type="email" id="email" name="email" placeholder="admin@queueless.com" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="pass">Password</label>
+                    <input type="password" id="pass" name="pass" placeholder="Enter admin password" required>
+                </div>
+
+                <button type="submit" class="btn btn-accent btn-full">Login</button>
+
+            </form>
+
+            <p class="auth-footer-text">Not an admin? <a href="../login.php">Student login</a></p>
+        </div>
+    </section>
+
+    <!-- footer -->
+    <footer class="footer">
+        <p>Green University of Bangladesh &mdash; Department of CSE</p>
+        <p>QueueLess Project | Web Programming Lab</p>
+    </footer>
+
+</body>
+</html>
+
+@admin/nextToken.php
+<?php
+    session_start();
+    require '../includes/db.php';
+
+    if (!isset($_SESSION['admin_id'])) {
+        header("Location: login.php");
+        exit();
+    }
+
+    $service = $_SESSION['admin_service']; // locked to admin's own assigned service, ignore any URL tampering
+
+    // only call next if NO ONE is currently being served
+    $currentServingStatement = mysqli_prepare($conn, "SELECT id FROM tokens WHERE service = ? AND status = 'serving' LIMIT 1");
+    mysqli_stmt_bind_param($currentServingStatement, "s", $service);
+    mysqli_stmt_execute($currentServingStatement);
+    $currentServingResult = mysqli_stmt_get_result($currentServingStatement);
+
+    if (mysqli_num_rows($currentServingResult) == 0) {
+        $nextStatement = mysqli_prepare($conn, "SELECT id FROM tokens WHERE service = ? AND status = 'waiting' ORDER BY id ASC LIMIT 1");
+        mysqli_stmt_bind_param($nextStatement, "s", $service);
+        mysqli_stmt_execute($nextStatement);
+        $nextResult = mysqli_stmt_get_result($nextStatement);
+
+        if (mysqli_num_rows($nextResult) > 0) {
+            $nextRow = mysqli_fetch_assoc($nextResult);
+            $updateStatement = mysqli_prepare($conn, "UPDATE tokens SET status = 'serving' WHERE id = ?");
+            mysqli_stmt_bind_param($updateStatement, "i", $nextRow['id']);
+            mysqli_stmt_execute($updateStatement);
+        }
+    }
+
+    header("Location: dashboard.php");
+    exit();
+?>
+
+@admin/resetQueue.php
+<?php
+    session_start();
+    require '../includes/db.php';
+
+    if (!isset($_SESSION['admin_id'])) {
+        header("Location: login.php");
+        exit();
+    }
+
+    $service = $_SESSION['admin_service']; // locked to admin's own assigned service, ignore any URL tampering
+
+    // clears the queue - marks everyone still waiting/serving as completed
+    $statement = mysqli_prepare($conn, "UPDATE tokens SET status = 'completed' WHERE service = ? AND status IN ('waiting','serving')");
+    mysqli_stmt_bind_param($statement, "s", $service);
+    mysqli_stmt_execute($statement);
+
+    header("Location: dashboard.php");
+    exit();
+?>
+
+@admin/skipToken.php
+<?php
+    session_start();
+    require '../includes/db.php';
+
+    if (!isset($_SESSION['admin_id'])) {
+        header("Location: login.php");
+        exit();
+    }
+
+    $service = $_SESSION['admin_service']; // locked to admin's own assigned service, ignore any URL tampering
+
+    $statement = mysqli_prepare($conn, "UPDATE tokens SET status = 'skipped' WHERE service = ? AND status = 'serving'");
+    mysqli_stmt_bind_param($statement, "s", $service);
+    mysqli_stmt_execute($statement);
+
+    header("Location: dashboard.php");
+    exit();
+?>
+
+@ajax/adminStatus.php
+<?php
+    session_start();
+    require '../includes/db.php';
+
+    header('Content-Type: application/json');
+
+    if (!isset($_SESSION['admin_id'])) {
+        echo json_encode(array("error" => "not logged in"));
+        exit();
+    }
+
+    $service = $_SESSION['admin_service']; // locked to admin's own assigned service, ignore any URL tampering
+
+    // now serving
+    $servingStatement = mysqli_prepare($conn, "SELECT tokens.*, students.name AS student_name FROM tokens JOIN students ON tokens.student_id = students.id WHERE tokens.service = ? AND tokens.status = 'serving' ORDER BY tokens.id ASC LIMIT 1");
+    mysqli_stmt_bind_param($servingStatement, "s", $service);
+    mysqli_stmt_execute($servingStatement);
+    $servingResult = mysqli_stmt_get_result($servingStatement);
+    $servingRow = mysqli_num_rows($servingResult) > 0 ? mysqli_fetch_assoc($servingResult) : null;
+
+    // stats
+    $waitingStatement = mysqli_prepare($conn, "SELECT COUNT(*) AS total FROM tokens WHERE service = ? AND status = 'waiting'");
+    mysqli_stmt_bind_param($waitingStatement, "s", $service);
+    mysqli_stmt_execute($waitingStatement);
+    $waitingRow = mysqli_fetch_assoc(mysqli_stmt_get_result($waitingStatement));
+
+    $servedStatement = mysqli_prepare($conn, "SELECT COUNT(*) AS total FROM tokens WHERE service = ? AND status = 'completed' AND DATE(created_at) = CURDATE()");
+    mysqli_stmt_bind_param($servedStatement, "s", $service);
+    mysqli_stmt_execute($servedStatement);
+    $servedRow = mysqli_fetch_assoc(mysqli_stmt_get_result($servedStatement));
+
+    $skippedStatement = mysqli_prepare($conn, "SELECT COUNT(*) AS total FROM tokens WHERE service = ? AND status = 'skipped' AND DATE(created_at) = CURDATE()");
+    mysqli_stmt_bind_param($skippedStatement, "s", $service);
+    mysqli_stmt_execute($skippedStatement);
+    $skippedRow = mysqli_fetch_assoc(mysqli_stmt_get_result($skippedStatement));
+
+    // waiting list rows
+    $listStatement = mysqli_prepare($conn, "SELECT tokens.*, students.name AS student_name FROM tokens JOIN students ON tokens.student_id = students.id WHERE tokens.service = ? AND tokens.status = 'waiting' ORDER BY tokens.id ASC");
+    mysqli_stmt_bind_param($listStatement, "s", $service);
+    mysqli_stmt_execute($listStatement);
+    $listResult = mysqli_stmt_get_result($listStatement);
+
+    $waitingList = array();
+    while ($row = mysqli_fetch_assoc($listResult)) {
+        $waitingList[] = array(
+            "token_no" => $row['token_no'],
+            "student_name" => $row['student_name'],
+            "time" => date("h:i A", strtotime($row['created_at']))
+        );
+    }
+
+    $response = array(
+        "servingToken" => $servingRow ? $servingRow['token_no'] : null,
+        "servingStudent" => $servingRow ? $servingRow['student_name'] : null,
+        "waitingCount" => $waitingRow['total'],
+        "servedCount" => $servedRow['total'],
+        "skippedCount" => $skippedRow['total'],
+        "waitingList" => $waitingList
+    );
+
+    echo json_encode($response);
+?>
+
+@ajax/queueStatus.php
+<?php
+    session_start();
+    require '../includes/db.php';
+
+    header('Content-Type: application/json');
+
+    if (!isset($_SESSION['student_id'])) {
+        echo json_encode(array("error" => "not logged in"));
+        exit();
+    }
+
+    $studentId = $_SESSION['student_id'];
+    $service = $_GET['service'];
+
+    // my token
+    $myStatement = mysqli_prepare($conn, "SELECT * FROM tokens WHERE student_id = ? AND service = ? AND status IN ('waiting','serving') ORDER BY id DESC LIMIT 1");
+    mysqli_stmt_bind_param($myStatement, "is", $studentId, $service);
+    mysqli_stmt_execute($myStatement);
+    $myResult = mysqli_stmt_get_result($myStatement);
+    $myToken = mysqli_fetch_assoc($myResult);
+
+    // token is no longer active (admin completed/skipped it) - tell the frontend and stop here
+    if (!$myToken) {
+        echo json_encode(array("myToken" => null));
+        exit();
+    }
+
+    // now serving
+    $servingStatement = mysqli_prepare($conn, "SELECT token_no FROM tokens WHERE service = ? AND status = 'serving' ORDER BY id ASC LIMIT 1");
+    mysqli_stmt_bind_param($servingStatement, "s", $service);
+    mysqli_stmt_execute($servingStatement);
+    $servingResult = mysqli_stmt_get_result($servingStatement);
+    $servingRow = mysqli_fetch_assoc($servingResult);
+    $nowServing = $servingRow ? $servingRow['token_no'] : "None yet";
+
+    // people ahead
+    $aheadStatement = mysqli_prepare($conn, "SELECT COUNT(*) AS ahead FROM tokens WHERE service = ? AND status = 'waiting' AND id < ?");
+    mysqli_stmt_bind_param($aheadStatement, "si", $service, $myToken['id']);
+    mysqli_stmt_execute($aheadStatement);
+    $aheadResult = mysqli_stmt_get_result($aheadStatement);
+    $aheadRow = mysqli_fetch_assoc($aheadResult);
+
+    $response = array(
+        "myTokenId" => $myToken['id'],
+        "myToken" => $myToken['token_no'],
+        "myStatus" => $myToken['status'],
+        "nowServing" => $nowServing,
+        "peopleAhead" => $aheadRow['ahead']
+    );
+
+    echo json_encode($response);
+?>
+
+@cancelToken.php
+<?php
+    session_start();
+    require 'includes/db.php';
+
+    if (!isset($_SESSION['student_id'])) {
+        header("Location: login.php");
+        exit();
+    }
+
+    $studentId = $_SESSION['student_id'];
+
+    if (!isset($_GET['id'])) {
+        header("Location: dashboard.php");
+        exit();
+    }
+    $tokenId = (int) $_GET['id'];
+
+    // only allow cancelling YOUR OWN token, and only if it's still waiting (not already being served)
+    $statement = mysqli_prepare($conn, "UPDATE tokens SET status = 'cancelled' WHERE id = ? AND student_id = ? AND status = 'waiting'");
+    mysqli_stmt_bind_param($statement, "ii", $tokenId, $studentId);
+    mysqli_stmt_execute($statement);
+
+    header("Location: dashboard.php");
+    exit();
+?>
+
+@css/admin.css
+/* ============================================
+   admin.css
+   Styles ONLY used on admin pages.
+   Loaded AFTER common.css.
+   (.btn-danger and .table-wrap now live in common.css)
+   ============================================ */
+
+.admin-badge {
+    background-color: var(--primary);
+    color: #FFFFFF;
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+}
+
+.btn-complete {
+    display: inline-block;
+    background-color: #FFFFFF;
+    color: var(--primary-dark);
+    padding: 10px 22px;
+    border-radius: 6px;
+    text-decoration: none;
+    font-weight: 700;
+    font-size: 15px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.btn-complete:hover {
+    background-color: #E6F4EC;
+}
+
+.btn-small {
+    padding: 7px 16px;
+    font-size: 13px;
+}
+
+/* ---------- header + tabs ---------- */
+.admin-header {
+    padding: 40px 60px 10px 60px;
+    text-align: center;
+}
+
+.admin-header h1 {
+    color: var(--primary);
+    font-size: 28px;
+    margin-bottom: 6px;
+}
+
+.admin-header p {
+    color: var(--text-muted);
+    font-size: 14px;
+    margin-bottom: 25px;
+}
+
+.service-tabs {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.tab {
+    padding: 9px 18px;
+    border-radius: 8px;
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-muted);
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+}
+
+.active-tab {
+    background-color: var(--primary);
+    color: #FFFFFF;
+    border-color: var(--primary);
+}
+
+/* ---------- control section ---------- */
+.control-section {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 22px;
+    padding: 30px 60px;
+    max-width: 1300px;
+    margin: 0 auto;
+}
+
+.serving-card {
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+    color: #FFFFFF;
+    border-radius: 14px;
+    padding: 30px;
+    text-align: center;
+}
+
+.serving-card .card-label {
+    color: #E6F4EC;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 10px;
+}
+
+.serving-card .big-token {
+    font-size: 38px;
+    font-weight: 800;
+    margin-bottom: 6px;
+}
+
+.serving-card .card-note {
+    color: #E6F4EC;
+    font-size: 14px;
+    margin-bottom: 22px;
+}
+
+.control-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.stat-mini-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+}
+
+.stat-mini {
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 10px;
+    text-align: center;
+}
+
+.stat-number {
+    font-size: 26px;
+    font-weight: 800;
+    color: var(--primary);
+    margin-bottom: 4px;
+}
+
+.stat-label {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+/* ---------- waiting list table ---------- */
+.queue-list-section {
+    padding: 10px 60px 60px 60px;
+    max-width: 1300px;
+    margin: 0 auto;
+}
+
+.queue-list-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.queue-list-header h2 {
+    color: var(--primary);
+    font-size: 20px;
+}
+
+.admin-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+.admin-table th:nth-child(1) { width: 15%; }
+.admin-table th:nth-child(2) { width: 40%; }
+.admin-table th:nth-child(3) { width: 20%; }
+.admin-table th:nth-child(4) { width: 25%; }
+
+.admin-table th {
+    background-color: var(--primary);
+    color: #FFFFFF;
+    text-align: left;
+    padding: 16px 22px;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+.admin-table td {
+    padding: 16px 22px;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.admin-table tr:last-child td {
+    border-bottom: none;
+}
+
+.status-pill {
+    display: inline-block;
+    padding: 5px 14px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.status-waiting {
+    background-color: rgba(244, 163, 0, 0.12);
+    color: var(--accent-dark);
+}
+
+/* ---------- responsive ---------- */
+@media (max-width: 900px) {
+    .admin-header,
+    .queue-list-section {
+        padding-left: 25px;
+        padding-right: 25px;
+    }
+
+    .control-section {
+        grid-template-columns: 1fr;
+        padding: 25px;
+    }
+}
+
+@media (max-width: 600px) {
+    .admin-header h1 {
+        font-size: 22px;
+    }
+
+    .service-tabs {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .stat-mini-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .control-buttons {
+        flex-direction: column;
+    }
+
+    .control-buttons .btn,
+    .control-buttons .btn-danger {
+        width: 100%;
+        text-align: center;
+    }
+}
+
+@css/auth.css
+/* ============================================
+   auth.css
+   Styles ONLY used on register.php.
+   Loaded AFTER common.css.
+   ============================================ */
+
+.auth-section {
+    min-height: calc(100vh - 160px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 50px 20px;
+    background: linear-gradient(135deg, var(--bg), #E6F4EC);
+}
+
+.auth-card {
+    background-color: var(--surface);
+    width: 100%;
+    max-width: 420px;
+    padding: 40px 35px;
+    border-radius: 14px;
+    box-shadow: 0 10px 30px rgba(1, 126, 67, 0.12);
+    border-top: 5px solid var(--primary);
+}
+
+.auth-card h1 {
+    font-size: 24px;
+    color: var(--primary);
+    margin-bottom: 6px;
+    text-align: center;
+}
+
+.auth-sub {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 14px;
+    margin-bottom: 28px;
+}
+
+.form-error {
+    background-color: rgba(220, 38, 38, 0.1);
+    color: var(--danger);
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    text-align: center;
+    margin-bottom: 18px;
+}
+
+.form-group {
+    margin-bottom: 18px;
+}
+
+.form-group label {
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-main);
+    margin-bottom: 6px;
+}
+
+.form-group input {
+    width: 100%;
+    padding: 11px 14px;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+    transition: 0.2s ease;
+}
+
+.form-group input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(1, 126, 67, 0.12);
+}
+
+.auth-footer-text {
+    text-align: center;
+    margin-top: 22px;
+    font-size: 14px;
+    color: var(--text-muted);
+}
+
+.auth-footer-text a {
+    color: var(--primary);
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.auth-footer-text a:hover {
+    text-decoration: underline;
+}
+
+/* ---------- responsive ---------- */
+@media (max-width: 600px) {
+    .auth-card {
+        padding: 30px 22px;
+    }
+
+    .auth-card h1 {
+        font-size: 21px;
+    }
+}
+
+@media (max-width: 360px) {
+    .auth-card {
+        padding: 24px 16px;
+    }
+
+    .form-group input {
+        padding: 10px 12px;
+        font-size: 13px;
+    }
+}
+
+@css/common.css
+/* ============================================
+   common.css
+   Shared across EVERY page — colors, navbar,
+   buttons, footer, resets, responsive base.
+   Page-specific files (home.css, register.css...)
+   are loaded AFTER this file.
+   ============================================ */
+
+/* ---------- color variables (change once, updates everywhere) ---------- */
+:root {
+    --primary: #017E43;
+    --primary-dark: #015C31;
+    --accent: #F4A300;
+    --accent-dark: #d98f00;
+    --bg: #F7F9F8;
+    --surface: #FFFFFF;
+    --text-main: #1F2937;
+    --text-muted: #6B7280;
+    --border: #E5E7EB;
+    --success: #16A34A;
+    --danger: #DC2626;
+}
+
+/* ---------- basic reset ---------- */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Poppins', 'Segoe UI', Arial, sans-serif;
+    background-color: var(--bg);
+    color: var(--text-main);
+    line-height: 1.6;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+.footer {
+    margin-top: auto;
+}
+
+/* ---------- navbar ---------- */
+.navbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 60px;
+    background-color: var(--surface);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.nav-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.logo {
+    height: 48px;
+    width: auto;
+    display: block;
+}
+
+.logo-text {
+    height: 25px;
+    width: auto;
+    display: block;
+}
+
+.nav-right {
+    display: flex;
+    gap: 12px;
+}
+
+/* ---------- buttons (reused everywhere) ---------- */
+.btn {
+    padding: 10px 22px;
+    border-radius: 6px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 15px;
+    transition: 0.2s ease;
+    display: inline-block;
+}
+
+.btn-solid {
+    background-color: var(--primary);
+    color: #FFFFFF;
+}
+
+.btn-solid:hover {
+    background-color: var(--primary-dark);
+}
+
+.btn-outline {
+    background-color: transparent;
+    color: var(--primary);
+    border: 2px solid var(--primary);
+}
+
+.btn-outline:hover {
+    background-color: var(--primary);
+    color: #FFFFFF;
+}
+
+.btn-accent {
+    background-color: var(--accent);
+    color: var(--text-main);
+    box-shadow: 0 6px 16px rgba(244, 163, 0, 0.35);
+    border: none;
+    cursor: pointer;
+}
+
+.btn-accent:hover {
+    background-color: var(--accent-dark);
+    transform: translateY(-2px);
+}
+
+.btn-full {
+    width: 100%;
+    padding: 12px;
+    font-size: 15px;
+    margin-top: 6px;
+    border: none;
+    cursor: pointer;
+}
+
+/* This red "danger" button is used on the admin dashboard (Skip),
+   the student dashboard (Cancel Token) and the queue page (Cancel).
+   It used to be copy-pasted in several CSS files - now it just lives here once. */
+.btn-danger {
+    display: inline-block;
+    background-color: var(--danger);
+    color: #FFFFFF;
+    padding: 10px 22px;
+    border-radius: 6px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 15px;
+}
+
+.btn-danger:hover {
+    background-color: #b91c1c;
+}
+
+/* This is the white rounded box that wraps a <table> element.
+   It used to be copy-pasted in the admin and history CSS files. */
+.table-wrap {
+    background-color: var(--surface);
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    overflow-x: auto;
+    border: 1px solid var(--border);
+}
+
+/* ---------- footer ---------- */
+.footer {
+    text-align: center;
+    padding: 25px;
+    background-color: var(--primary-dark);
+    color: #E6F4EC;
+    font-size: 14px;
+}
+
+/* ---------- responsive: navbar (applies on every page) ---------- */
+@media (max-width: 900px) {
+    .navbar {
+        padding: 15px 25px;
+    }
+}
+
+@media (max-width: 600px) {
+    .navbar {
+        flex-direction: column;
+        gap: 12px;
+        padding: 15px;
+    }
+
+    .logo {
+        height: 40px;
+    }
+
+    .logo-text {
+        height: 21px;
+    }
+
+    .nav-right {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .btn {
+        padding: 9px 18px;
+        font-size: 14px;
+    }
+}
+
+@css/dashboard.css
+/* ============================================
+   dashboard.css
+   Styles ONLY used on dashboard.php.
+   Loaded AFTER common.css.
+   (.btn-danger now lives in common.css)
+   ============================================ */
+
+.welcome-bar {
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+    color: #FFFFFF;
+    padding: 45px 60px 60px 60px;
+    text-align: center;
+}
+
+.welcome-bar h1 {
+    font-size: 30px;
+    margin-bottom: 6px;
+}
+
+.welcome-bar p {
+    color: #E6F4EC;
+    font-size: 15px;
+}
+
+/* ---------- status card (overlaps welcome bar slightly) ---------- */
+.status-section {
+    display: flex;
+    justify-content: center;
+    padding: 0 20px;
+    margin-top: -35px;
+}
+
+.status-card {
+    background-color: var(--surface);
+    width: 100%;
+    max-width: 500px;
+    padding: 28px 30px;
+    border-radius: 14px;
+    box-shadow: 0 10px 30px rgba(1, 126, 67, 0.15);
+    text-align: center;
+    border-top: 5px solid var(--accent);
+}
+
+.status-label {
+    font-size: 13px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+}
+
+.status-token {
+    font-size: 26px;
+    color: var(--primary);
+    margin-bottom: 6px;
+}
+
+.status-sub {
+    font-size: 14px;
+    color: var(--text-muted);
+}
+
+.track-btn {
+    display: inline-block;
+    margin-top: 16px;
+}
+
+.btn-disabled {
+    display: inline-block;
+    background-color: #E5E7EB;
+    color: var(--text-muted);
+    cursor: not-allowed;
+}
+
+.track-link {
+    margin-bottom: 8px;
+}
+
+/* ---------- services section ---------- */
+.services {
+    padding: 70px 60px;
+    text-align: center;
+}
+
+.services h2 {
+    color: var(--primary);
+    margin-bottom: 8px;
+    font-size: 28px;
+    font-weight: 700;
+}
+
+.services > p.section-sub {
+    color: var(--text-muted);
+    margin-bottom: 40px;
+    font-size: 15px;
+}
+
+.service-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 25px;
+}
+
+.service-card {
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    border-top: 4px solid var(--primary);
+    border-radius: 10px;
+    padding: 28px 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    transition: 0.25s ease;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.service-card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 10px 24px rgba(1, 126, 67, 0.15);
+    border-top-color: var(--accent);
+}
+
+.service-card h3 {
+    color: var(--primary);
+    margin-bottom: 10px;
+}
+
+.service-card p {
+    font-size: 14px;
+    color: var(--text-muted);
+    margin-bottom: 15px;
+}
+
+.token-tag {
+    display: inline-block;
+    background-color: var(--accent);
+    color: var(--text-main);
+    font-weight: 700;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 13px;
+    margin-bottom: 18px;
+}
+
+.last-used-badge {
+    display: block;
+    font-size: 11px;
+    color: var(--primary);
+    font-weight: 600;
+    margin-top: -12px;
+    margin-bottom: 12px;
+}
+
+.btn-full-small {
+    width: 100%;
+    text-align: center;
+    padding: 9px;
+    font-size: 14px;
+}
+
+/* ---------- responsive ---------- */
+@media (max-width: 900px) {
+    .service-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 600px) {
+    .welcome-bar {
+        padding: 35px 20px 55px 20px;
+    }
+
+    .welcome-bar h1 {
+        font-size: 24px;
+    }
+
+    .services {
+        padding: 45px 20px;
+    }
+
+    .service-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .status-card {
+        padding: 22px 20px;
+    }
+}
+
+@css/history.css
+/* ============================================
+   history.css
+   Styles ONLY used on history.php.
+   Loaded AFTER common.css.
+   (.table-wrap now lives in common.css)
+   ============================================ */
+
+.history-section {
+    padding: 50px 60px 70px 60px;
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+.history-header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.history-header h1 {
+    color: var(--primary);
+    font-size: 28px;
+    margin-bottom: 6px;
+}
+
+.history-header p {
+    color: var(--text-muted);
+    font-size: 14px;
+}
+
+.history-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+.history-table th:nth-child(1) { width: 15%; }
+.history-table th:nth-child(2) { width: 35%; }
+.history-table th:nth-child(3) { width: 25%; }
+.history-table th:nth-child(4) { width: 25%; }
+
+.history-table th {
+    background-color: var(--primary);
+    color: #FFFFFF;
+    text-align: left;
+    padding: 14px 18px;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+.history-table td {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+    color: var(--text-main);
+}
+
+.history-table tr:last-child td {
+    border-bottom: none;
+}
+
+.history-table tr:hover td {
+    background-color: var(--bg);
+}
+
+.status-pill {
+    display: inline-block;
+    padding: 5px 14px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.status-completed {
+    background-color: rgba(22, 163, 74, 0.12);
+    color: var(--success);
+}
+
+.status-skipped {
+    background-color: rgba(220, 38, 38, 0.1);
+    color: var(--danger);
+}
+
+.status-cancelled {
+    background-color: rgba(107, 114, 128, 0.12);
+    color: var(--text-muted);
+}
+
+/* ---------- responsive ---------- */
+@media (max-width: 600px) {
+    .history-section {
+        padding: 35px 20px 50px 20px;
+    }
+
+    .history-header h1 {
+        font-size: 22px;
+    }
+
+    .history-table th,
+    .history-table td {
+        padding: 10px 12px;
+        font-size: 13px;
+    }
+}
+
+@css/home.css
+/* ============================================
+   home.css
+   Styles ONLY used on index.php (home page).
+   Loaded AFTER common.css.
+   ============================================ */
+
+/* ---------- hero section ---------- */
+.hero {
+    text-align: center;
+    padding: 110px 20px 100px 20px;
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+    color: #FFFFFF;
+    position: relative;
+    overflow: hidden;
+}
+
+.hero::before {
+    content: "";
+    position: absolute;
+    top: -60px;
+    right: -60px;
+    width: 260px;
+    height: 260px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 50%;
+}
+
+.hero::after {
+    content: "";
+    position: absolute;
+    bottom: -80px;
+    left: -80px;
+    width: 320px;
+    height: 320px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 50%;
+}
+
+.hero h1 {
+    font-size: 46px;
+    font-weight: 800;
+    margin-bottom: 18px;
+    position: relative;
+}
+
+.hero p {
+    font-size: 17px;
+    max-width: 600px;
+    margin: 0 auto;
+    color: #E6F4EC;
+    position: relative;
+}
+
+.hero .btn-accent {
+    margin-top: 24px;
+}
+
+/* ---------- services section ---------- */
+.services {
+    padding: 70px 60px;
+    text-align: center;
+}
+
+.services h2 {
+    color: var(--primary);
+    margin-bottom: 8px;
+    font-size: 30px;
+    font-weight: 700;
+}
+
+.services > p.section-sub {
+    color: var(--text-muted);
+    margin-bottom: 40px;
+    font-size: 15px;
+}
+
+.service-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 25px;
+}
+
+.service-card {
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    border-top: 4px solid var(--primary);
+    border-radius: 10px;
+    padding: 32px 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    transition: 0.25s ease;
+}
+
+.service-card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 10px 24px rgba(1, 126, 67, 0.15);
+    border-top-color: var(--accent);
+}
+
+.service-card h3 {
+    color: var(--primary);
+    margin-bottom: 10px;
+}
+
+.service-card p {
+    font-size: 14px;
+    color: var(--text-muted);
+    margin-bottom: 15px;
+}
+
+.token-tag {
+    display: inline-block;
+    background-color: var(--accent);
+    color: var(--text-main);
+    font-weight: 700;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 13px;
+}
+
+/* ---------- how it works section ---------- */
+.how-it-works {
+    padding: 70px 60px;
+    background-color: var(--surface);
+    text-align: center;
+}
+
+.how-it-works h2 {
+    color: var(--primary);
+    margin-bottom: 40px;
+    font-size: 28px;
+}
+
+.steps {
+    display: flex;
+    justify-content: center;
+    gap: 50px;
+    flex-wrap: wrap;
+}
+
+.step {
+    max-width: 220px;
+}
+
+.step-number {
+    width: 45px;
+    height: 45px;
+    background-color: var(--primary);
+    color: #FFFFFF;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 18px;
+    margin: 0 auto 15px auto;
+}
+
+.step h3 {
+    margin-bottom: 8px;
+    color: var(--text-main);
+}
+
+.step p {
+    font-size: 14px;
+    color: var(--text-muted);
+}
+
+/* ---------- responsive ---------- */
+@media (max-width: 900px) {
+    .service-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .steps {
+        gap: 30px;
+    }
+
+    .hero h1 {
+        font-size: 34px;
+    }
+}
+
+@media (max-width: 600px) {
+    .hero {
+        padding: 60px 20px;
+    }
+
+    .hero h1 {
+        font-size: 26px;
+    }
+
+    .hero p {
+        font-size: 15px;
+    }
+
+    .services,
+    .how-it-works {
+        padding: 45px 20px;
+    }
+
+    .service-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .steps {
+        flex-direction: column;
+        align-items: center;
+    }
+}
+
+@css/queue.css
+/* ============================================
+   queue.css
+   Styles ONLY used on queue.php.
+   Loaded AFTER common.css.
+   (.btn-danger now lives in common.css)
+   ============================================ */
+
+.queue-section {
+    padding: 50px 60px 70px 60px;
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+.queue-header {
+    text-align: center;
+    margin-bottom: 35px;
+}
+
+.queue-header h1 {
+    color: var(--primary);
+    font-size: 28px;
+    margin-bottom: 6px;
+}
+
+.queue-header p {
+    color: var(--text-muted);
+    font-size: 14px;
+}
+
+.queue-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 22px;
+    margin-bottom: 30px;
+}
+
+.queue-card {
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 26px 20px;
+    text-align: center;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.highlight-card {
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+    border: none;
+}
+
+.highlight-card .card-label {
+    color: #E6F4EC;
+}
+
+.highlight-card .big-token {
+    color: #FFFFFF;
+}
+
+.card-label {
+    font-size: 13px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 10px;
+}
+
+.big-token {
+    font-size: 34px;
+    font-weight: 800;
+    color: var(--primary);
+    margin-bottom: 12px;
+}
+
+.big-number {
+    font-size: 34px;
+    font-weight: 800;
+    color: var(--accent-dark);
+    margin-bottom: 8px;
+}
+
+.card-note {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.status-pill {
+    display: inline-block;
+    padding: 5px 14px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.status-waiting {
+    background-color: rgba(255, 255, 255, 0.2);
+    color: #FFFFFF;
+}
+
+.status-serving {
+    background-color: rgba(22, 163, 74, 0.12);
+    color: var(--success);
+}
+
+.queue-note {
+    background-color: rgba(244, 163, 0, 0.1);
+    border: 1px solid rgba(244, 163, 0, 0.3);
+    border-radius: 10px;
+    padding: 14px 18px;
+    text-align: center;
+    margin-bottom: 25px;
+}
+
+.queue-note p {
+    font-size: 13px;
+    color: var(--text-main);
+}
+
+.back-btn {
+    display: block;
+    width: fit-content;
+    margin: 0 auto;
+}
+
+.cancel-btn {
+    display: block;
+    width: fit-content;
+    margin: 14px auto 0 auto;
+}
+
+/* ---------- responsive ---------- */
+@media (max-width: 900px) {
+    .queue-section {
+        padding: 40px 25px 60px 25px;
+    }
+
+    .queue-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 600px) {
+    .queue-header h1 {
+        font-size: 22px;
+    }
+
+    .big-token,
+    .big-number {
+        font-size: 28px;
+    }
+}
+
+@dashboard.php
+<?php
+    session_start();
+
+    if (!isset($_SESSION['student_id'])) {
+        header("Location: login.php");
+        exit();
+    }
+
+    $studentName = $_SESSION['student_name'];
+
+    require 'includes/db.php';
+    require 'includes/services.php'; // gives us the $services list
+    $studentId = $_SESSION['student_id'];
+
+    // does this student already have a token that is waiting or being served?
+    $activeStatement = mysqli_prepare($conn, "SELECT * FROM tokens WHERE student_id = ? AND status IN ('waiting','serving') ORDER BY id DESC LIMIT 1");
+    mysqli_stmt_bind_param($activeStatement, "i", $studentId);
+    mysqli_stmt_execute($activeStatement);
+    $activeResult = mysqli_stmt_get_result($activeStatement);
+    $activeToken = mysqli_num_rows($activeResult) > 0 ? mysqli_fetch_assoc($activeResult) : null;
+
+    // check cookie for last selected service
+    $lastService = isset($_COOKIE['lastService']) ? $_COOKIE['lastService'] : "";
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - QueueLess</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="icon" href="images/favicon.png" type="image/png">
+    <link rel="stylesheet" href="css/common.css">
+    <link rel="stylesheet" href="css/dashboard.css">
+</head>
+<body>
+
+    <!-- top navbar -->
+    <header class="navbar">
+        <a href="dashboard.php" class="nav-left" style="text-decoration:none;">
+            <img src="images/queueless-icon.png" alt="QueueLess Icon" class="logo">
+            <img src="images/queueless-text.png" alt="QueueLess Text" class="logo-text">
+        </a>
+        <div class="nav-right">
+            <a href="history.php" class="btn btn-outline">History</a>
+            <a href="logout.php" class="btn btn-solid">Logout</a>
+        </div>
+    </header>
+
+    <!-- welcome bar -->
+    <section class="welcome-bar">
+        <h1>Welcome back, <?php echo htmlspecialchars($studentName); ?></h1>
+        <p>Here's your queue status and available services</p>
+    </section>
+
+    <!-- current token status -->
+    <section class="status-section">
+        <div class="status-card">
+            <p class="status-label">Your Active Token</p>
+            <?php if ($activeToken) { ?>
+                <h2 class="status-token" id="statusTokenBox"><?php echo htmlspecialchars($activeToken['token_no']); ?> (<?php echo ucfirst($activeToken['service']); ?>)</h2>
+                <p class="status-sub" id="statusSubBox">Status: <?php echo ucfirst($activeToken['status']); ?></p>
+                <a href="queue.php?service=<?php echo $activeToken['service']; ?>" class="btn btn-solid track-btn">Track Live Queue</a>
+            <?php } else { ?>
+                <h2 class="status-token" id="statusTokenBox">No active token</h2>
+                <p class="status-sub" id="statusSubBox">Select a service below to take a new token</p>
+            <?php } ?>
+        </div>
+    </section>
+
+    <!-- service selection -->
+    <section class="services">
+        <h2>Select a Service</h2>
+        <p class="section-sub">Choose where you need to go, we'll handle the queue</p>
+
+        <div class="service-grid">
+
+            <?php foreach ($services as $service) {
+                $serviceCode = $service['code'];
+            ?>
+            <div class="service-card">
+                <h3><?php echo htmlspecialchars($service['name']); ?></h3>
+                <p><?php echo htmlspecialchars($service['description']); ?></p>
+                <span class="token-tag"><?php echo $service['prefix']; ?>001</span>
+
+                <?php if ($lastService == $serviceCode) { ?>
+                    <span class="last-used-badge">Last used</span>
+                <?php } ?>
+
+                <?php if ($activeToken && $activeToken['service'] == $serviceCode) { ?>
+                    <!-- this is the service the student's active token belongs to -->
+                    <div id="activeCardActionBox">
+                        <a href="queue.php?service=<?php echo $serviceCode; ?>" class="btn btn-outline btn-full-small track-link">Track Queue</a>
+                        <?php if ($activeToken['status'] == 'waiting') { ?>
+                            <a href="cancelToken.php?id=<?php echo $activeToken['id']; ?>" class="btn btn-danger btn-full-small" onclick="return confirm('Cancel this token?');">Cancel Token</a>
+                        <?php } else { ?>
+                            <span class="btn btn-disabled btn-full-small">Being Served</span>
+                        <?php } ?>
+                    </div>
+                <?php } elseif ($activeToken) { ?>
+                    <!-- student already has an active token for a DIFFERENT service, so this one is locked -->
+                    <span class="btn btn-disabled btn-full-small">Locked</span>
+                <?php } else { ?>
+                    <!-- no active token anywhere, so the student can take one here -->
+                    <a href="queue.php?service=<?php echo $serviceCode; ?>" class="btn btn-solid btn-full-small">Take Token</a>
+                <?php } ?>
+            </div>
+            <?php } ?>
+
+        </div>
+    </section>
+
+    <!-- footer -->
+    <footer class="footer">
+        <p>Green University of Bangladesh &mdash; Department of CSE</p>
+        <p>QueueLess Project | Web Programming Lab</p>
+    </footer>
+    <?php if ($activeToken) { ?>
+    <script>
+        var activeService = "<?php echo $activeToken['service']; ?>";
+
+        function refreshDashboardStatus() {
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", "ajax/queueStatus.php?service=" + activeService, true);
+
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState == 4 && xhr.status == 200) {
+                    var data = JSON.parse(xhr.responseText);
+                    if (data.error || !data.myToken) {
+                        // token no longer active (completed/cancelled) - reload to reflect fresh state
+                        location.reload();
+                        return;
+                    }
+
+                    document.getElementById("statusTokenBox").innerHTML = data.myToken + " (" + activeService.charAt(0).toUpperCase() + activeService.slice(1) + ")";
+                    document.getElementById("statusSubBox").innerHTML = "Status: " + (data.myStatus.charAt(0).toUpperCase() + data.myStatus.slice(1)) + " | People ahead: " + data.peopleAhead;
+
+                    var actionBox = document.getElementById("activeCardActionBox");
+                    if (actionBox) {
+                        var trackLink = '<a href="queue.php?service=' + activeService + '" class="btn btn-outline btn-full-small track-link">Track Queue</a>';
+                        if (data.myStatus == "waiting") {
+                            actionBox.innerHTML = trackLink + '<a href="cancelToken.php?id=' + data.myTokenId + '" class="btn btn-danger btn-full-small" onclick="return confirm(\'Cancel this token?\');">Cancel Token</a>';
+                        } else {
+                            actionBox.innerHTML = trackLink + '<span class="btn btn-disabled btn-full-small">Being Served</span>';
+                        }
+                    }
+                }
+            };
+
+            xhr.send();
+        }
+
+        setInterval(refreshDashboardStatus, 5000);
+    </script>
+    <?php } ?>
+
+</body>
+</html>
+
+@history.php
+<?php
+    session_start();
+    require 'includes/db.php';
+    require 'includes/services.php'; // gives us $serviceNames
+
+    if (!isset($_SESSION['student_id'])) {
+        header("Location: login.php");
+        exit();
+    }
+
+    $studentId = $_SESSION['student_id'];
+
+    $historyStatement = mysqli_prepare($conn, "SELECT * FROM tokens WHERE student_id = ? ORDER BY created_at DESC");
+    mysqli_stmt_bind_param($historyStatement, "i", $studentId);
+    mysqli_stmt_execute($historyStatement);
+    $historyResult = mysqli_stmt_get_result($historyStatement);
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>History - QueueLess</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="icon" href="images/favicon.png" type="image/png">
+    <link rel="stylesheet" href="css/common.css">
+    <link rel="stylesheet" href="css/history.css">
+    <link rel="icon" href="images/favicon.png" type="image/png">
+</head>
+<body>
+
+    <!-- top navbar -->
+    <header class="navbar">
+        <a href="dashboard.php" class="nav-left" style="text-decoration:none;">
+            <img src="images/queueless-icon.png" alt="QueueLess Icon" class="logo">
+            <img src="images/queueless-text.png" alt="QueueLess Text" class="logo-text">
+        </a>
+        <div class="nav-right">
+            <a href="dashboard.php" class="btn btn-outline">Dashboard</a>
+            <a href="logout.php" class="btn btn-solid">Logout</a>
+        </div>
+    </header>
+
+    <!-- history section -->
+    <section class="history-section">
+
+        <div class="history-header">
+            <h1>Your Token History</h1>
+            <p>All the tokens you have taken so far</p>
+        </div>
+
+        <div class="table-wrap">
+            <table class="history-table">
+                <thead>
+                    <tr>
+                        <th>Token</th>
+                        <th>Service</th>
+                        <th>Date</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if (mysqli_num_rows($historyResult) > 0) { ?>
+                        <?php while ($row = mysqli_fetch_assoc($historyResult)) { ?>
+                            <tr>
+                                <td><?php echo htmlspecialchars($row['token_no']); ?></td>
+                                <td><?php echo htmlspecialchars($serviceNames[$row['service']]); ?></td>
+                                <td><?php echo date("d M Y", strtotime($row['created_at'])); ?></td>
+                                <td>
+                                    <?php if ($row['status'] == 'completed') { ?>
+                                        <span class="status-pill status-completed">Completed</span>
+                                    <?php } elseif ($row['status'] == 'skipped') { ?>
+                                        <span class="status-pill status-skipped">Skipped</span>
+                                    <?php } elseif ($row['status'] == 'cancelled') { ?>
+                                        <span class="status-pill status-cancelled">Cancelled</span>
+                                    <?php } else { ?>
+                                        <span class="status-pill status-completed" style="background-color: rgba(244,163,0,0.12); color: #d98f00;"><?php echo ucfirst($row['status']); ?></span>
+                                    <?php } ?>
+                                </td>
+                            </tr>
+                        <?php } ?>
+                    <?php } else { ?>
+                        <tr>
+                            <td colspan="4" style="text-align:center; padding: 30px; color: var(--text-muted);">You have no token history yet.</td>
+                        </tr>
+                    <?php } ?>
+                </tbody>
+            </table>
+        </div>
+
+    </section>
+
+    <!-- footer -->
+    <footer class="footer">
+        <p>Green University of Bangladesh &mdash; Department of CSE</p>
+        <p>QueueLess Project | Web Programming Lab</p>
+    </footer>
+
+</body>
+</html>
+
+@images/README_IMAGES.txt
+This project's original code refers to these image files:
+- favicon.png
+- queueless-icon.png
+- queueless-text.png
+
+These image files were not included in the text export of your project,
+so they could not be copied into this simplified version.
+
+Please copy your original images/ folder (or just these 3 files) from your
+old project into this images/ folder before running the site, and then you
+can delete this note.
+
+@includes/db.php
+<?php
+// PHP 8.1+ makes mysqli throw exceptions by default - we want the old
+// behavior (functions return false on error) so our own error checks work
+mysqli_report(MYSQLI_REPORT_OFF);
+
+// connecting to our database
+$conn = mysqli_connect("localhost", "root", "", "queue");
+
+if (!$conn) {
+    die("connection failed: " . mysqli_connect_error());
+}
+?>
+
+@includes/services.php
+<?php
+// This file just holds the list of the 4 services in one place,
+// so every page uses the exact same names and token prefixes.
+
+// The short code used in the database and in URLs (?service=accounts)
+// The full name shown to the user
+// The letter used at the start of the token number (A001, L001, etc.)
+$services = array(
+    array("code" => "accounts", "name" => "Accounts Office",       "prefix" => "A", "description" => "Tuition fee, payments and account related queries."),
+    array("code" => "library",  "name" => "Library",                "prefix" => "L", "description" => "Book issue, return and library membership services."),
+    array("code" => "cse",      "name" => "CSE Department Office",  "prefix" => "C", "description" => "Department related forms, signatures and notices."),
+    array("code" => "lab",      "name" => "Computer Lab",           "prefix" => "B", "description" => "Lab access, equipment and technical support."),
+);
+
+// Same information, but as simple lookup lists ($serviceNames['library'] etc.)
+// This is just for convenience when we already know the service code.
+$serviceNames = array(
+    "accounts" => "Accounts Office",
+    "library"  => "Library",
+    "cse"      => "CSE Department Office",
+    "lab"      => "Computer Lab",
+);
+
+$servicePrefixes = array(
+    "accounts" => "A",
+    "library"  => "L",
+    "cse"      => "C",
+    "lab"      => "B",
+);
+?>
+
+@index.php
+<?php
+    require 'includes/services.php'; // gives us the $services list
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QueueLess - Green University of Bangladesh</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/common.css">
+    <link rel="stylesheet" href="css/home.css">
+    <link rel="icon" href="images/favicon.png" type="image/png">
+</head>
+<body>
+
+    <!-- top navbar -->
+    <header class="navbar">
+        <div class="nav-left">
+            <img src="images/queueless-icon.png" alt="QueueLess Icon" class="logo">
+            <img src="images/queueless-text.png" alt="QueueLess Text" class="logo-text">
+        </div>
+        <div class="nav-right">
+            <a href="login.php" class="btn btn-outline">Login</a>
+            <a href="register.php" class="btn btn-solid">Register</a>
+        </div>
+    </header>
+
+    <!-- hero section -->
+    <section class="hero">
+        <h1>Skip the Line, Not the Service</h1>
+        <p>A digital queue system for Green University of Bangladesh — take a token online and track your position in real time, no more standing in long lines.</p>
+        <a href="register.php" class="btn btn-accent">Get Started</a>
+    </section>
+
+    <!-- services preview -->
+    <section class="services">
+        <h2>Our Services</h2>
+        <p class="section-sub">Pick a service below and get your digital token in seconds</p>
+        <div class="service-grid">
+
+            <?php foreach ($services as $service) { ?>
+                <div class="service-card">
+                    <h3><?php echo htmlspecialchars($service['name']); ?></h3>
+                    <p><?php echo htmlspecialchars($service['description']); ?></p>
+                    <span class="token-tag"><?php echo $service['prefix']; ?>001</span>
+                </div>
+            <?php } ?>
+
+        </div>
+    </section>
+
+    <!-- how it works -->
+    <section class="how-it-works">
+        <h2>How It Works</h2>
+        <div class="steps">
+
+            <div class="step">
+                <div class="step-number">1</div>
+                <h3>Register</h3>
+                <p>Create your student account in a few seconds.</p>
+            </div>
+
+            <div class="step">
+                <div class="step-number">2</div>
+                <h3>Select Service</h3>
+                <p>Choose which office or service you need to visit.</p>
+            </div>
+
+            <div class="step">
+                <div class="step-number">3</div>
+                <h3>Get Token & Track</h3>
+                <p>Receive your token number and watch the queue live.</p>
+            </div>
+
+        </div>
+    </section>
+
+    <!-- footer -->
+    <footer class="footer">
+        <p>Green University of Bangladesh &mdash; Department of CSE</p>
+        <p>QueueLess Project | Web Programming Lab</p>
+    </footer>
+
+</body>
+</html>
+
+@js/script.js
+
+
+@login.php
+<?php
+    session_start();
+    require 'includes/db.php';
+
+    $errorMsg = "";
+
+    if (isset($_POST['email'])) {
+        $email = $_POST['email'];
+        $pass = $_POST['pass'];
+
+        // Prepared statement: the ? is a placeholder, and bind_param
+        // safely inserts the email value instead of pasting it into the SQL text.
+        $statement = mysqli_prepare($conn, "SELECT * FROM students WHERE email = ?");
+        mysqli_stmt_bind_param($statement, "s", $email);
+        mysqli_stmt_execute($statement);
+        $result = mysqli_stmt_get_result($statement);
+
+        if (mysqli_num_rows($result) > 0) {
+            $row = mysqli_fetch_assoc($result);
+
+            if (password_verify($pass, $row['pass'])) {
+                $_SESSION['student_id'] = $row['id'];
+                $_SESSION['student_name'] = $row['name'];
+
+                header("Location: dashboard.php");
+                exit();
+            } else {
+                $errorMsg = "Wrong password";
+            }
+        } else {
+            $errorMsg = "No account found with this email";
+        }
+    }
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - QueueLess</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/common.css">
+    <link rel="stylesheet" href="css/auth.css">
+    <link rel="icon" href="images/favicon.png" type="image/png">
+</head>
+<body>
+
+    <!-- top navbar (same as home page) -->
+    <header class="navbar">
+        <a href="index.php" class="nav-left" style="text-decoration:none;">
+            <img src="images/queueless-icon.png" alt="QueueLess Icon" class="logo">
+            <img src="images/queueless-text.png" alt="QueueLess Text" class="logo-text">
+        </a>
+        <div class="nav-right">
+            <a href="register.php" class="btn btn-outline">Register</a>
+        </div>
+    </header>
+
+    <!-- login card -->
+    <section class="auth-section">
+        <div class="auth-card">
+            <h1>Welcome Back</h1>
+            <p class="auth-sub">Login to check your queue status</p>
+
+            <?php if ($errorMsg != "") { ?>
+                <p class="form-error"><?php echo htmlspecialchars($errorMsg); ?></p>
+            <?php } ?>
+
+            <form action="" method="POST">
+
+                <div class="form-group">
+                    <label for="email">Email Address</label>
+                    <input type="email" id="email" name="email" placeholder="you@example.com" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="pass">Password</label>
+                    <input type="password" id="pass" name="pass" placeholder="Enter your password" required>
+                </div>
+
+                <button type="submit" class="btn btn-accent btn-full">Login</button>
+
+            </form>
+
+            <p class="auth-footer-text">Don't have an account? <a href="register.php">Register here</a></p>
+        </div>
+    </section>
+
+    <!-- footer -->
+    <footer class="footer">
+        <p>Green University of Bangladesh &mdash; Department of CSE</p>
+        <p>QueueLess Project | Web Programming Lab</p>
+    </footer>
+
+</body>
+</html>
+
+@logout.php
+<?php
+    session_start();
+    session_unset();
+    session_destroy();
+
+    header("Location: login.php");
+    exit();
+?>
+
+@queue.php
+<?php
+    session_start();
+    require 'includes/db.php';
+    require 'includes/services.php'; // gives us $serviceNames and $servicePrefixes
+
+    if (!isset($_SESSION['student_id'])) {
+        header("Location: login.php");
+        exit();
+    }
+
+    $studentId = $_SESSION['student_id'];
+
+    // validate service parameter - must be one of our 4 real services
+    $validServices = array("accounts", "library", "cse", "lab");
+    if (!isset($_GET['service']) || !in_array($_GET['service'], $validServices)) {
+        header("Location: dashboard.php");
+        exit();
+    }
+    $service = $_GET['service'];
+
+    // block duplicate: if student has an active token for ANY service, send them there instead
+    $anyActiveStatement = mysqli_prepare($conn, "SELECT * FROM tokens WHERE student_id = ? AND status IN ('waiting','serving') ORDER BY id DESC LIMIT 1");
+    mysqli_stmt_bind_param($anyActiveStatement, "i", $studentId);
+    mysqli_stmt_execute($anyActiveStatement);
+    $anyActiveResult = mysqli_stmt_get_result($anyActiveStatement);
+
+    if (mysqli_num_rows($anyActiveResult) > 0) {
+        $existingToken = mysqli_fetch_assoc($anyActiveResult);
+        if ($existingToken['service'] != $service) {
+            header("Location: queue.php?service=" . $existingToken['service']);
+            exit();
+        }
+    }
+
+    // service prefix + display name lookup
+    $prefix = $servicePrefixes[$service];
+    $serviceName = $serviceNames[$service];
+
+    // check if this student already has an active token for THIS service
+    $checkStatement = mysqli_prepare($conn, "SELECT * FROM tokens WHERE student_id = ? AND service = ? AND status IN ('waiting','serving') ORDER BY id DESC LIMIT 1");
+    mysqli_stmt_bind_param($checkStatement, "is", $studentId, $service);
+    mysqli_stmt_execute($checkStatement);
+    $checkResult = mysqli_stmt_get_result($checkStatement);
+
+    if (mysqli_num_rows($checkResult) > 0) {
+        // already has one, just show it
+        $myToken = mysqli_fetch_assoc($checkResult);
+    } else {
+        // no active token, generate a new one
+        // count how many tokens already taken for this service
+        $countStatement = mysqli_prepare($conn, "SELECT COUNT(*) AS total FROM tokens WHERE service = ?");
+        mysqli_stmt_bind_param($countStatement, "s", $service);
+        mysqli_stmt_execute($countStatement);
+        $countResult = mysqli_stmt_get_result($countStatement);
+        $countRow = mysqli_fetch_assoc($countResult);
+        $nextNumber = $countRow['total'] + 1;
+
+        $tokenNo = $prefix . str_pad($nextNumber, 3, "0", STR_PAD_LEFT);
+
+        $insertStatement = mysqli_prepare($conn, "INSERT INTO tokens (student_id, service, token_no, status, created_at) VALUES (?, ?, ?, 'waiting', NOW())");
+        mysqli_stmt_bind_param($insertStatement, "iss", $studentId, $service, $tokenNo);
+        $inserted = mysqli_stmt_execute($insertStatement);
+
+        // if two students hit this at the exact same time, the unique key blocks the duplicate - just retry with +1
+        if (!$inserted) {
+            $nextNumber = $nextNumber + 1;
+            $tokenNo = $prefix . str_pad($nextNumber, 3, "0", STR_PAD_LEFT);
+            $retryStatement = mysqli_prepare($conn, "INSERT INTO tokens (student_id, service, token_no, status, created_at) VALUES (?, ?, ?, 'waiting', NOW())");
+            mysqli_stmt_bind_param($retryStatement, "iss", $studentId, $service, $tokenNo);
+            mysqli_stmt_execute($retryStatement);
+        }
+
+        $newTokenId = mysqli_insert_id($conn);
+        $myTokenStatement = mysqli_prepare($conn, "SELECT * FROM tokens WHERE id = ?");
+        mysqli_stmt_bind_param($myTokenStatement, "i", $newTokenId);
+        mysqli_stmt_execute($myTokenStatement);
+        $myTokenResult = mysqli_stmt_get_result($myTokenStatement);
+        $myToken = mysqli_fetch_assoc($myTokenResult);
+
+        // extremely rare: even the retry failed - send them back rather than crash
+        if (!$myToken) {
+            header("Location: dashboard.php");
+            exit();
+        }
+    }
+
+    // find the token currently being served for this service
+    $servingStatement = mysqli_prepare($conn, "SELECT * FROM tokens WHERE service = ? AND status = 'serving' ORDER BY id ASC LIMIT 1");
+    mysqli_stmt_bind_param($servingStatement, "s", $service);
+    mysqli_stmt_execute($servingStatement);
+    $servingResult = mysqli_stmt_get_result($servingStatement);
+    $servingRow = mysqli_fetch_assoc($servingResult);
+    $nowServingToken = $servingRow ? $servingRow['token_no'] : "None yet";
+
+    // count how many waiting tokens are ahead of mine (created before mine, still waiting)
+    $aheadStatement = mysqli_prepare($conn, "SELECT COUNT(*) AS ahead FROM tokens WHERE service = ? AND status = 'waiting' AND id < ?");
+    mysqli_stmt_bind_param($aheadStatement, "si", $service, $myToken['id']);
+    mysqli_stmt_execute($aheadStatement);
+    $aheadResult = mysqli_stmt_get_result($aheadStatement);
+    $aheadRow = mysqli_fetch_assoc($aheadResult);
+    $peopleAhead = $aheadRow['ahead'];
+
+    // remember this service for next time (30 days)
+    setcookie("lastService", $service, time() + (30 * 24 * 60 * 60), "/");
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Queue Status - QueueLess</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="icon" href="images/favicon.png" type="image/png">
+    <link rel="stylesheet" href="css/common.css?v=2">
+    <link rel="stylesheet" href="css/queue.css?v=2">
+</head>
+<body>
+
+    <!-- top navbar -->
+    <header class="navbar">
+        <a href="dashboard.php" class="nav-left" style="text-decoration:none;">
+            <img src="images/queueless-icon.png" alt="QueueLess Icon" class="logo">
+            <img src="images/queueless-text.png" alt="QueueLess Text" class="logo-text">
+        </a>
+        <div class="nav-right">
+            <a href="dashboard.php" class="btn btn-outline">Dashboard</a>
+            <a href="logout.php" class="btn btn-solid">Logout</a>
+        </div>
+    </header>
+
+    <!-- queue status -->
+    <section class="queue-section">
+
+        <div class="queue-header">
+            <h1><?php echo htmlspecialchars($serviceName); ?> Queue</h1>
+            <p>Live status of your token, updates automatically</p>
+        </div>
+
+        <div class="queue-grid">
+
+            <!-- your token -->
+            <div class="queue-card highlight-card">
+                <p class="card-label">Your Token</p>
+                <h2 class="big-token" id="myTokenBox"><?php echo htmlspecialchars($myToken['token_no']); ?></h2>
+                <span class="status-pill status-waiting" id="myStatusBox">
+                    <?php echo $myToken['status'] == 'waiting' ? 'Waiting' : 'In Progress'; ?>
+                </span>
+            </div>
+
+            <!-- currently serving -->
+            <div class="queue-card">
+                <p class="card-label">Now Serving</p>
+                <h2 class="big-token" id="servingBox"><?php echo htmlspecialchars($nowServingToken); ?></h2>
+                <span class="status-pill status-serving">In Progress</span>
+            </div>
+
+            <!-- people ahead -->
+            <div class="queue-card">
+                <p class="card-label">People Ahead of You</p>
+                <h2 class="big-number" id="aheadBox"><?php echo $peopleAhead; ?></h2>
+                <p class="card-note" id="waitNote">Estimated wait: ~<?php echo $peopleAhead * 5; ?> mins</p>
+            </div>
+
+        </div>
+
+        <div class="queue-note">
+            <p>This page refreshes automatically every 5 seconds. Please stay nearby when your token number is close.</p>
+        </div>
+
+        <a href="dashboard.php" class="btn btn-outline back-btn">Back to Dashboard</a>
+
+    </section>
+
+    <!-- footer -->
+    <footer class="footer">
+        <p>Green University of Bangladesh &mdash; Department of CSE</p>
+        <p>QueueLess Project | Web Programming Lab</p>
+    </footer>
+    <script>
+        function refreshQueueStatus() {
+            var xhr = new XMLHttpRequest();
+            var url = "ajax/queueStatus.php?service=<?php echo $service; ?>";
+
+            xhr.open("GET", url, true);
+
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState == 4 && xhr.status == 200) {
+                    var data = JSON.parse(xhr.responseText);
+
+                    document.getElementById("myTokenBox").innerHTML = data.myToken;
+                    document.getElementById("servingBox").innerHTML = data.nowServing;
+                    document.getElementById("aheadBox").innerHTML = data.peopleAhead;
+                    document.getElementById("waitNote").innerHTML = "Estimated wait: ~" + (data.peopleAhead * 5) + " mins";
+
+                    var statusBox = document.getElementById("myStatusBox");
+                    if (data.myStatus == "waiting") {
+                        statusBox.innerHTML = "Waiting";
+                        statusBox.className = "status-pill status-waiting";
+                    } else {
+                        statusBox.innerHTML = "In Progress";
+                        statusBox.className = "status-pill status-serving";
+                    }
+                }
+            };
+
+            xhr.send();
+        }
+
+        // refresh every 5 seconds
+        setInterval(refreshQueueStatus, 5000);
+    </script>
+
+</body>
+</html>
+
+@README.md
+# QueueLess
+
+**Multi-Service Digital Queue Management System**
+Green University of Bangladesh — Department of CSE — Web Programming Lab Project
+
+QueueLess lets students take a virtual queue token for university services (Accounts Office, Library, CSE Department Office, Computer Lab) instead of waiting in a physical line. Students track their live position, and admins manage each queue from a dedicated dashboard.
+
+## Features
+
+- Student registration & login with hashed passwords (bcrypt)
+- Live dashboard — updates automatically every 5 seconds, no manual refresh
+- One active token per student at a time, enforced server-side
+- Live queue tracking (position, now serving, estimated wait) via Ajax (XMLHttpRequest)
+- Token cancellation while still waiting
+- Full token history per student
+- Multi-admin support — each admin is locked to exactly one service
+- Live admin dashboard — call next, complete, skip, reset queue, all real-time
+- Fully responsive design (mobile, tablet, desktop)
+
+## Tech Stack
+
+HTML, CSS, JavaScript, Ajax (XMLHttpRequest), PHP (procedural), MySQL, XAMPP
+
+## Setup
+
+1. Clone this repo into your XAMPP `htdocs` folder
+2. Import the database schema (see `/docs` or ask for `schema.sql`)
+3. Start Apache and MySQL in XAMPP
+4. Visit `http://localhost/QueueLess/`
+
+## Project Structure
+
+```
+QueueLess/
+├── index.php, login.php, register.php, dashboard.php, queue.php, history.php, logout.php
+├── admin/          - admin login, dashboard, queue control actions
+├── ajax/           - live polling endpoints (queueStatus.php, adminStatus.php)
+├── includes/       - shared db connection + shared service list
+├── css/            - one shared common.css + per-page stylesheets
+├── images/         - logo, icons, favicon
+└── OPERATING_GUIDE.md - full usage guide for students & admins
+```
+
+## Author
+
+Built by Sabbir Hossain Osmani as an individual Web Programming Lab project.
+
+@register.php
+<?php
+    session_start();
+    require 'includes/db.php';
+
+    $errorMsg = "";
+
+    if (isset($_POST['name'])) {
+        $name = $_POST['name'];
+        $email = $_POST['email'];
+        $pass = $_POST['pass'];
+        $confirmPass = $_POST['confirmPass'];
+
+        if ($pass !== $confirmPass) {
+            $errorMsg = "Passwords do not match";
+        } elseif (strlen($pass) < 6) {
+            $errorMsg = "Password must be at least 6 characters";
+        } else {
+            // check if email already used
+            $checkStatement = mysqli_prepare($conn, "SELECT id FROM students WHERE email = ?");
+            mysqli_stmt_bind_param($checkStatement, "s", $email);
+            mysqli_stmt_execute($checkStatement);
+            $checkResult = mysqli_stmt_get_result($checkStatement);
+
+            if (mysqli_num_rows($checkResult) > 0) {
+                $errorMsg = "This email is already registered";
+            } else {
+                $hashedPass = password_hash($pass, PASSWORD_DEFAULT);
+
+                $insertStatement = mysqli_prepare($conn, "INSERT INTO students (name, email, pass, created_at) VALUES (?, ?, ?, NOW())");
+                mysqli_stmt_bind_param($insertStatement, "sss", $name, $email, $hashedPass);
+                mysqli_stmt_execute($insertStatement);
+
+                $newId = mysqli_insert_id($conn);
+                $_SESSION['student_id'] = $newId;
+                $_SESSION['student_name'] = $name;
+
+                header("Location: dashboard.php");
+                exit();
+            }
+        }
+    }
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register - QueueLess</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="icon" href="images/favicon.png" type="image/png">
+    <link rel="stylesheet" href="css/common.css">
+    <link rel="stylesheet" href="css/auth.css">
+</head>
+<body>
+
+    <!-- top navbar (same as home page) -->
+    <header class="navbar">
+        <a href="index.php" class="nav-left" style="text-decoration:none;">
+            <img src="images/queueless-icon.png" alt="QueueLess Icon" class="logo">
+            <img src="images/queueless-text.png" alt="QueueLess Text" class="logo-text">
+        </a>
+        <div class="nav-right">
+            <a href="login.php" class="btn btn-outline">Login</a>
+        </div>
+    </header>
+
+    <!-- register card -->
+    <section class="auth-section">
+        <div class="auth-card">
+            <h1>Create Your Account</h1>
+            <p class="auth-sub">Register to start taking digital tokens</p>
+
+            <?php if ($errorMsg != "") { ?>
+                <p class="form-error"><?php echo htmlspecialchars($errorMsg); ?></p>
+            <?php } ?>
+
+            <form action="" method="POST">
+
+                <div class="form-group">
+                    <label for="name">Full Name</label>
+                    <input type="text" id="name" name="name" placeholder="Enter your full name" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="email">Email Address</label>
+                    <input type="email" id="email" name="email" placeholder="you@example.com" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="pass">Password</label>
+                    <input type="password" id="pass" name="pass" placeholder="At least 6 characters" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="confirmPass">Confirm Password</label>
+                    <input type="password" id="confirmPass" name="confirmPass" placeholder="Re-enter your password" required>
+                </div>
+
+                <button type="submit" class="btn btn-accent btn-full">Register</button>
+
+            </form>
+
+            <p class="auth-footer-text">Already have an account? <a href="login.php">Login here</a></p>
+        </div>
+    </section>
+
+    <!-- footer -->
+    <footer class="footer">
+        <p>Green University of Bangladesh &mdash; Department of CSE</p>
+        <p>QueueLess Project | Web Programming Lab</p>
+    </footer>
+
+</body>
+</html>
+

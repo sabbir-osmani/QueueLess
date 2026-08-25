@@ -9,10 +9,14 @@
     $studentName = $_SESSION['student_name'];
 
     require 'includes/db.php';
+    require 'includes/services.php'; // gives us the $services list
     $studentId = $_SESSION['student_id'];
 
-    $activeQuery = "SELECT * FROM tokens WHERE student_id = $studentId AND status IN ('waiting','serving') ORDER BY id DESC LIMIT 1";
-    $activeResult = mysqli_query($conn, $activeQuery);
+    // does this student already have a token that is waiting or being served?
+    $activeStatement = mysqli_prepare($conn, "SELECT * FROM tokens WHERE student_id = ? AND status IN ('waiting','serving') ORDER BY id DESC LIMIT 1");
+    mysqli_stmt_bind_param($activeStatement, "i", $studentId);
+    mysqli_stmt_execute($activeStatement);
+    $activeResult = mysqli_stmt_get_result($activeStatement);
     $activeToken = mysqli_num_rows($activeResult) > 0 ? mysqli_fetch_assoc($activeResult) : null;
 
     // check cookie for last selected service
@@ -46,7 +50,7 @@
 
     <!-- welcome bar -->
     <section class="welcome-bar">
-        <h1>Welcome back, <?php echo $studentName; ?></h1>
+        <h1>Welcome back, <?php echo htmlspecialchars($studentName); ?></h1>
         <p>Here's your queue status and available services</p>
     </section>
 
@@ -55,7 +59,7 @@
         <div class="status-card">
             <p class="status-label">Your Active Token</p>
             <?php if ($activeToken) { ?>
-                <h2 class="status-token" id="statusTokenBox"><?php echo $activeToken['token_no']; ?> (<?php echo ucfirst($activeToken['service']); ?>)</h2>
+                <h2 class="status-token" id="statusTokenBox"><?php echo htmlspecialchars($activeToken['token_no']); ?> (<?php echo ucfirst($activeToken['service']); ?>)</h2>
                 <p class="status-sub" id="statusSubBox">Status: <?php echo ucfirst($activeToken['status']); ?></p>
                 <a href="queue.php?service=<?php echo $activeToken['service']; ?>" class="btn btn-solid track-btn">Track Live Queue</a>
             <?php } else { ?>
@@ -72,97 +76,37 @@
 
         <div class="service-grid">
 
+            <?php foreach ($services as $service) {
+                $serviceCode = $service['code'];
+            ?>
             <div class="service-card">
-                <h3>Accounts Office</h3>
-                <p>Tuition fee, payments and account related queries.</p>
-                <span class="token-tag">A001</span>
-                <?php if ($lastService == 'accounts') { ?>
-                    <span class="last-used-badge">Last used</span>
-                <?php } ?>
-                <?php if ($activeToken && $activeToken['service'] == 'accounts') { ?>
-                    <div id="activeCardActionBox">
-                    <a href="queue.php?service=accounts" class="btn btn-outline btn-full-small track-link">Track Queue</a>
-                    <?php if ($activeToken['status'] == 'waiting') { ?>
-                        <a href="cancelToken.php?id=<?php echo $activeToken['id']; ?>" class="btn btn-danger btn-full-small" onclick="return confirm('Cancel this token?');">Cancel Token</a>
-                    <?php } else { ?>
-                        <span class="btn btn-disabled btn-full-small">Being Served</span>
-                    <?php } ?>
-                    </div>
-                <?php } elseif ($activeToken) { ?>
-                    <span class="btn btn-disabled btn-full-small">Locked</span>
-                <?php } else { ?>
-                    <a href="queue.php?service=accounts" class="btn btn-solid btn-full-small">Take Token</a>
-                <?php } ?>
-            </div>
+                <h3><?php echo htmlspecialchars($service['name']); ?></h3>
+                <p><?php echo htmlspecialchars($service['description']); ?></p>
+                <span class="token-tag"><?php echo $service['prefix']; ?>001</span>
 
-            <div class="service-card">
-                <h3>Library</h3>
-                <p>Book issue, return and library membership services.</p>
-                <span class="token-tag">L001</span>
-                <?php if ($lastService == 'library') { ?>
+                <?php if ($lastService == $serviceCode) { ?>
                     <span class="last-used-badge">Last used</span>
                 <?php } ?>
-                <?php if ($activeToken && $activeToken['service'] == 'library') { ?>
-                    <div id="activeCardActionBox">
-                    <a href="queue.php?service=library" class="btn btn-outline btn-full-small track-link">Track Queue</a>
-                    <?php if ($activeToken['status'] == 'waiting') { ?>
-                        <a href="cancelToken.php?id=<?php echo $activeToken['id']; ?>" class="btn btn-danger btn-full-small" onclick="return confirm('Cancel this token?');">Cancel Token</a>
-                    <?php } else { ?>
-                        <span class="btn btn-disabled btn-full-small">Being Served</span>
-                    <?php } ?>
-                    </div>
-                <?php } elseif ($activeToken) { ?>
-                    <span class="btn btn-disabled btn-full-small">Locked</span>
-                <?php } else { ?>
-                    <a href="queue.php?service=library" class="btn btn-solid btn-full-small">Take Token</a>
-                <?php } ?>
-            </div>
 
-            <div class="service-card">
-                <h3>CSE Department Office</h3>
-                <p>Department related forms, signatures and notices.</p>
-                <span class="token-tag">C001</span>
-                <?php if ($lastService == 'cse') { ?>
-                    <span class="last-used-badge">Last used</span>
-                <?php } ?>
-                <?php if ($activeToken && $activeToken['service'] == 'cse') { ?>
+                <?php if ($activeToken && $activeToken['service'] == $serviceCode) { ?>
+                    <!-- this is the service the student's active token belongs to -->
                     <div id="activeCardActionBox">
-                    <a href="queue.php?service=cse" class="btn btn-outline btn-full-small track-link">Track Queue</a>
-                    <?php if ($activeToken['status'] == 'waiting') { ?>
-                        <a href="cancelToken.php?id=<?php echo $activeToken['id']; ?>" class="btn btn-danger btn-full-small" onclick="return confirm('Cancel this token?');">Cancel Token</a>
-                    <?php } else { ?>
-                        <span class="btn btn-disabled btn-full-small">Being Served</span>
-                    <?php } ?>
+                        <a href="queue.php?service=<?php echo $serviceCode; ?>" class="btn btn-outline btn-full-small track-link">Track Queue</a>
+                        <?php if ($activeToken['status'] == 'waiting') { ?>
+                            <a href="cancelToken.php?id=<?php echo $activeToken['id']; ?>" class="btn btn-danger btn-full-small" onclick="return confirm('Cancel this token?');">Cancel Token</a>
+                        <?php } else { ?>
+                            <span class="btn btn-disabled btn-full-small">Being Served</span>
+                        <?php } ?>
                     </div>
                 <?php } elseif ($activeToken) { ?>
+                    <!-- student already has an active token for a DIFFERENT service, so this one is locked -->
                     <span class="btn btn-disabled btn-full-small">Locked</span>
                 <?php } else { ?>
-                    <a href="queue.php?service=cse" class="btn btn-solid btn-full-small">Take Token</a>
+                    <!-- no active token anywhere, so the student can take one here -->
+                    <a href="queue.php?service=<?php echo $serviceCode; ?>" class="btn btn-solid btn-full-small">Take Token</a>
                 <?php } ?>
             </div>
-
-            <div class="service-card">
-                <h3>Computer Lab</h3>
-                <p>Lab access, equipment and technical support.</p>
-                <span class="token-tag">B001</span>
-                <?php if ($lastService == 'lab') { ?>
-                    <span class="last-used-badge">Last used</span>
-                <?php } ?>
-                <?php if ($activeToken && $activeToken['service'] == 'lab') { ?>
-                    <div id="activeCardActionBox">
-                    <a href="queue.php?service=lab" class="btn btn-outline btn-full-small track-link">Track Queue</a>
-                    <?php if ($activeToken['status'] == 'waiting') { ?>
-                        <a href="cancelToken.php?id=<?php echo $activeToken['id']; ?>" class="btn btn-danger btn-full-small" onclick="return confirm('Cancel this token?');">Cancel Token</a>
-                    <?php } else { ?>
-                        <span class="btn btn-disabled btn-full-small">Being Served</span>
-                    <?php } ?>
-                    </div>
-                <?php } elseif ($activeToken) { ?>
-                    <span class="btn btn-disabled btn-full-small">Locked</span>
-                <?php } else { ?>
-                    <a href="queue.php?service=lab" class="btn btn-solid btn-full-small">Take Token</a>
-                <?php } ?>
-            </div>
+            <?php } ?>
 
         </div>
     </section>
