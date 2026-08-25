@@ -1,6 +1,7 @@
 <?php
     session_start();
     require '../includes/db.php';
+    require '../includes/services.php'; // gives us $serviceNames
 
     if (!isset($_SESSION['admin_id'])) {
         header("Location: login.php");
@@ -9,34 +10,43 @@
 
     $service = $_SESSION['admin_service'];
     $adminName = $_SESSION['admin_name'];
-    $nameMap = array("accounts" => "Accounts Office", "library" => "Library", "cse" => "CSE Department Office", "lab" => "Computer Lab");
 
     // safety check - this admin account has no service assigned in the database
-    if (!$service || !isset($nameMap[$service])) {
+    if (!$service || !isset($serviceNames[$service])) {
         die("Your admin account has no service assigned. Please contact the system administrator to fix this in the admins table.");
     }
 
     // now serving row
-    $servingQuery = "SELECT tokens.*, students.name AS student_name FROM tokens JOIN students ON tokens.student_id = students.id WHERE tokens.service = '$service' AND tokens.status = 'serving' ORDER BY tokens.id ASC LIMIT 1";
-    $servingResult = mysqli_query($conn, $servingQuery);
+    $servingStatement = mysqli_prepare($conn, "SELECT tokens.*, students.name AS student_name FROM tokens JOIN students ON tokens.student_id = students.id WHERE tokens.service = ? AND tokens.status = 'serving' ORDER BY tokens.id ASC LIMIT 1");
+    mysqli_stmt_bind_param($servingStatement, "s", $service);
+    mysqli_stmt_execute($servingStatement);
+    $servingResult = mysqli_stmt_get_result($servingStatement);
     $servingRow = mysqli_num_rows($servingResult) > 0 ? mysqli_fetch_assoc($servingResult) : null;
 
     // stats: waiting count, served today, skipped today
-    $waitingQuery = "SELECT COUNT(*) AS total FROM tokens WHERE service = '$service' AND status = 'waiting'";
-    $waitingRow = mysqli_fetch_assoc(mysqli_query($conn, $waitingQuery));
+    $waitingStatement = mysqli_prepare($conn, "SELECT COUNT(*) AS total FROM tokens WHERE service = ? AND status = 'waiting'");
+    mysqli_stmt_bind_param($waitingStatement, "s", $service);
+    mysqli_stmt_execute($waitingStatement);
+    $waitingRow = mysqli_fetch_assoc(mysqli_stmt_get_result($waitingStatement));
     $waitingCount = $waitingRow['total'];
 
-    $servedQuery = "SELECT COUNT(*) AS total FROM tokens WHERE service = '$service' AND status = 'completed' AND DATE(created_at) = CURDATE()";
-    $servedRow = mysqli_fetch_assoc(mysqli_query($conn, $servedQuery));
+    $servedStatement = mysqli_prepare($conn, "SELECT COUNT(*) AS total FROM tokens WHERE service = ? AND status = 'completed' AND DATE(created_at) = CURDATE()");
+    mysqli_stmt_bind_param($servedStatement, "s", $service);
+    mysqli_stmt_execute($servedStatement);
+    $servedRow = mysqli_fetch_assoc(mysqli_stmt_get_result($servedStatement));
     $servedCount = $servedRow['total'];
 
-    $skippedQuery = "SELECT COUNT(*) AS total FROM tokens WHERE service = '$service' AND status = 'skipped' AND DATE(created_at) = CURDATE()";
-    $skippedRow = mysqli_fetch_assoc(mysqli_query($conn, $skippedQuery));
+    $skippedStatement = mysqli_prepare($conn, "SELECT COUNT(*) AS total FROM tokens WHERE service = ? AND status = 'skipped' AND DATE(created_at) = CURDATE()");
+    mysqli_stmt_bind_param($skippedStatement, "s", $service);
+    mysqli_stmt_execute($skippedStatement);
+    $skippedRow = mysqli_fetch_assoc(mysqli_stmt_get_result($skippedStatement));
     $skippedCount = $skippedRow['total'];
 
     // waiting list
-    $listQuery = "SELECT tokens.*, students.name AS student_name FROM tokens JOIN students ON tokens.student_id = students.id WHERE tokens.service = '$service' AND tokens.status = 'waiting' ORDER BY tokens.id ASC";
-    $listResult = mysqli_query($conn, $listQuery);
+    $listStatement = mysqli_prepare($conn, "SELECT tokens.*, students.name AS student_name FROM tokens JOIN students ON tokens.student_id = students.id WHERE tokens.service = ? AND tokens.status = 'waiting' ORDER BY tokens.id ASC");
+    mysqli_stmt_bind_param($listStatement, "s", $service);
+    mysqli_stmt_execute($listStatement);
+    $listResult = mysqli_stmt_get_result($listStatement);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -67,10 +77,10 @@
     <!-- service selector -->
     <section class="admin-header">
         <h1>Queue Management</h1>
-        <p>Welcome, <?php echo $adminName; ?> &mdash; you manage the <strong><?php echo $nameMap[$service]; ?></strong> queue</p>
+        <p>Welcome, <?php echo htmlspecialchars($adminName); ?> &mdash; you manage the <strong><?php echo htmlspecialchars($serviceNames[$service]); ?></strong> queue</p>
 
         <div class="service-tabs">
-            <span class="tab active-tab"><?php echo $nameMap[$service]; ?></span>
+            <span class="tab active-tab"><?php echo htmlspecialchars($serviceNames[$service]); ?></span>
         </div>
     </section>
 
@@ -80,8 +90,8 @@
         <div class="serving-card">
             <p class="card-label">Now Serving</p>
             <?php if ($servingRow) { ?>
-                <h2 class="big-token" id="servingTokenBox"><?php echo $servingRow['token_no']; ?></h2>
-                <p class="card-note" id="servingStudentBox">Student: <?php echo $servingRow['student_name']; ?></p>
+                <h2 class="big-token" id="servingTokenBox"><?php echo htmlspecialchars($servingRow['token_no']); ?></h2>
+                <p class="card-note" id="servingStudentBox">Student: <?php echo htmlspecialchars($servingRow['student_name']); ?></p>
             <?php } else { ?>
                 <h2 class="big-token" id="servingTokenBox">--</h2>
                 <p class="card-note" id="servingStudentBox">No one is being served right now</p>
@@ -117,7 +127,7 @@
     <!-- waiting list -->
     <section class="queue-list-section">
         <div class="queue-list-header">
-            <h2><?php echo $nameMap[$service]; ?> - Waiting List</h2>
+            <h2><?php echo htmlspecialchars($serviceNames[$service]); ?> - Waiting List</h2>
             <a href="resetQueue.php?service=<?php echo $service; ?>" class="btn btn-outline btn-small">Reset Queue</a>
         </div>
 
@@ -135,8 +145,8 @@
                     <?php if (mysqli_num_rows($listResult) > 0) { ?>
                         <?php while ($row = mysqli_fetch_assoc($listResult)) { ?>
                             <tr>
-                                <td><?php echo $row['token_no']; ?></td>
-                                <td><?php echo $row['student_name']; ?></td>
+                                <td><?php echo htmlspecialchars($row['token_no']); ?></td>
+                                <td><?php echo htmlspecialchars($row['student_name']); ?></td>
                                 <td><?php echo date("h:i A", strtotime($row['created_at'])); ?></td>
                                 <td><span class="status-pill status-waiting">Waiting</span></td>
                             </tr>

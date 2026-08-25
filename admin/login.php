@@ -8,8 +8,10 @@
         $email = $_POST['email'];
         $pass = $_POST['pass'];
 
-        $query = "SELECT * FROM admins WHERE email = '$email'";
-        $result = mysqli_query($conn, $query);
+        $statement = mysqli_prepare($conn, "SELECT * FROM admins WHERE email = ?");
+        mysqli_stmt_bind_param($statement, "s", $email);
+        mysqli_stmt_execute($statement);
+        $result = mysqli_stmt_get_result($statement);
 
         if (mysqli_num_rows($result) > 0) {
             $row = mysqli_fetch_assoc($result);
@@ -61,7 +63,7 @@
             <p class="auth-sub">Staff access only, manage queues here</p>
 
             <?php if ($errorMsg != "") { ?>
-                <p class="form-error"><?php echo $errorMsg; ?></p>
+                <p class="form-error"><?php echo htmlspecialchars($errorMsg); ?></p>
             <?php } ?>
 
             <form action="" method="POST">
